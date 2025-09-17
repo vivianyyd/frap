@@ -19,8 +19,11 @@ Module Impl.
   (* Define [Neg] so that it implements Boolean negation, which flips
    * the truth value of a Boolean value.
    *)
-  Definition Neg (b : bool) : bool.
-  Admitted.
+  Definition Neg (b : bool) : bool :=
+  match b with
+    | true => false
+    | false => true
+    end.
 
   (* For instance, the negation of [true] should be [false].
    * This proof should follow from reducing both sides of the equation
@@ -28,7 +31,9 @@ Module Impl.
    *)
   Theorem Neg_true : Neg true = false.
   Proof.
-  Admitted.
+    simplify.
+    equality.
+  Qed.
 
   (* Negation should be involutive, meaning that if we negate
    * any Boolean value twice, we should get the original value back.
@@ -39,39 +44,53 @@ Module Impl.
    *)
   Theorem Neg_involutive : forall b : bool, Neg (Neg b) = b.
   Proof.
-  Admitted.
+    intros b.
+    cases b; simplify; equality.
+  Qed.
 
   (* Define [And] so that it implements Boolean conjunction. That is,
    * the result value should be [true] exactly when both inputs
    * are [true].
    *)
-  Definition And (x y : bool) : bool.
-  Admitted.
+  Definition And (x y : bool) : bool :=
+  match x with 
+  |true => match y with 
+    |true => true
+    |false => false
+    end
+  | false => false
+  end.
 
   (* Here are a couple of examples of how [And] should act on
    * concrete inputs.
    *)
   Theorem And_true_true : And true true = true.
   Proof.
-  Admitted.
+  simplify. equality.
+  Qed.
 
   Theorem And_false_true : And false true = false.
   Proof.
-  Admitted.
+    simplify. equality.
+    Qed.
 
   (* Prove that [And] is commutative, meaning that switching the order
    * of its arguments doesn't affect the result.
    *)
   Theorem And_comm : forall x y : bool, And x y = And y x.
   Proof.
-  Admitted.
+    intros x y.
+    cases x; cases y; equality.
+  Qed.
 
   (* Prove that the conjunction of a Boolean value with [true]
    * doesn't change that value.
    *)
   Theorem And_true_r : forall x : bool, And x true = x.
   Proof.
-  Admitted.
+    intros x.
+    cases x; equality.
+  Qed.
 
   (* You may have noticed that the [=] operator above does not return a [bool]. *)
   Check (true = false).
@@ -137,43 +156,69 @@ Module Impl.
    * that running the program [p] should result in, when the
    * initial state is [n].
    *)
-  Fixpoint run (p : Prog) (initState : nat) : nat.
-  Admitted.
+  Fixpoint run (p : Prog) (initState : nat) : nat :=
+  match p with 
+  | Done => initState
+  | AddThen n c => run c (n + initState)
+  | MulThen n c => run c (n * initState)
+  | DivThen n c => run c (initState / n)
+  | VidThen n c => run c (n / initState) 
+  | SetToThen n c => run c n
+  end.
 
   Theorem run_Example1 : run Done 0 = 0.
   Proof.
-  Admitted.
+    simplify. equality.
+  Qed.
 
   Theorem run_Example2 : run (MulThen 5 (AddThen 2 Done)) 1 = 7.
   Proof.
-  Admitted.
+    simplify. equality.
+  Qed.
 
   Theorem run_Example3 : run (SetToThen 3 (MulThen 2 Done)) 10 = 6.
-  Proof.
-  Admitted.
+  Proof.    
+    simplify. equality.
+  Qed.
 
   (* Define [numInstructions] to compute the number of instructions
    * in a program, not counting [Done] as an instruction.
    *)
-  Fixpoint numInstructions (p : Prog) : nat.
-  Admitted.
+  Fixpoint numInstructions (p : Prog) : nat :=
+  match p with 
+  | Done => 0
+  | AddThen _ c => 1 + numInstructions c
+  | MulThen _ c => 1 + numInstructions c
+  | DivThen _ c => 1 + numInstructions c
+  | VidThen _ c => 1 + numInstructions c
+  | SetToThen _ c => 1 + numInstructions c
+  end.
 
   Theorem numInstructions_Example :
     numInstructions (MulThen 5 (AddThen 2 Done)) = 2.
   Proof.
-  Admitted.
+    simplify. equality.
+  Qed.
 
   (* Define [concatProg] such that [concatProg p1 p2] is the program
    * that first runs [p1] and then runs [p2].
    *)
-  Fixpoint concatProg (p1 p2 : Prog) : Prog.
-  Admitted.
+  Fixpoint concatProg (p1 p2 : Prog) : Prog :=
+  match p1 with 
+  | Done => p2
+  | AddThen   n c => AddThen n (concatProg c p2)
+  | MulThen   n c => MulThen   n (concatProg c p2)
+  | DivThen   n c => DivThen   n (concatProg c p2)
+  | VidThen   n c => VidThen   n (concatProg c p2)
+  | SetToThen n c => SetToThen n (concatProg c p2)
+  end.
 
   Theorem concatProg_Example :
        concatProg (AddThen 1 Done) (MulThen 2 Done)
        = AddThen 1 (MulThen 2 Done).
   Proof.
-  Admitted.
+    simplify. equality.
+  Qed.
 
   (* Prove that the number of instructions in the concatenation of
    * two programs is the sum of the number of instructions in each
@@ -183,7 +228,9 @@ Module Impl.
     : forall (p1 p2 : Prog), numInstructions (concatProg p1 p2)
                         = numInstructions p1 + numInstructions p2.
   Proof.
-  Admitted.
+    intros p1 p2.
+    induct p1; simplify; equality.
+  Qed.
 
   (* Prove that running the concatenation of [p1] with [p2] is
      equivalent to running [p1] and then running [p2] on the
@@ -193,7 +240,9 @@ Module Impl.
       run (concatProg p1 p2) initState =
       run p2 (run p1 initState).
   Proof.
-  Admitted.
+    intros p1 p2.
+    induct p1; simplify; equality.
+  Qed.
 
   (* Read this definition and understand how division by zero is handled. *)
   Fixpoint runPortable (p : Prog) (state : nat) : bool * nat :=
@@ -234,8 +283,22 @@ Module Impl.
      [true] to confirm that no divison by zero occurred. *)
   Lemma runPortable_run : forall p s0 s1,
     runPortable p s0 = (true, s1) -> run p s0 = s1.
-  Proof.
-  Admitted.
+  Proof. 
+    induct p.
+    simplify; try equality; apply IHp; try exact H.
+    simplify; try equality; apply IHp; try exact H.
+    simplify; try equality; apply IHp; try exact H.
+
+    simplify. induct n. 
+        simplify. equality.
+        simplify. apply IHp. exact H.
+
+    simplify. apply IHp. induct s0. 
+        simplify. equality.
+        exact H.
+
+    simplify; try equality; apply IHp; try exact H.
+  Qed.
 
   (* The final goal of this pset is to implement [validate : Prog -> bool]
      such that if this function returns [true], the program would not trigger
@@ -269,30 +332,47 @@ Module Impl.
    * necessary, and only jump into coding when you have some idea why it should
    * succeed. Some may call Rocq a video game, but it is not a grinding contest. *)
 
+  Fixpoint validate' (p: Prog) (nz: bool) : bool :=
+  match p with 
+  | Done => true
+  | AddThen n c => validate' c (if n ==n 0 then nz else true)
+  | MulThen n c => validate' c (if n ==n 0 then false else nz)
+  | DivThen n c => if n ==n 0 then false else validate' c (if n ==n 1 then nz else false) (* n can be arbitrarily large, making division produce zero state *)
+  | VidThen n c => if nz then validate' c false (* state can be arbitrarily large, making n/state 0 *) else false
+  | SetToThen n c => validate' c (if n ==n 0 then false else true)
+  end.
 
-  Definition validate (p : Prog) : bool.
-  Admitted.
-
+  Definition validate (p : Prog) : bool := validate' p false.
+  
   (* Start by making sure that your solution passes the following tests, and add
    * at least one of your own tests: *)
 
-  Example validate1 : validate goodProgram1 = true. Admitted.
-  Example validate2 : validate goodProgram2 = true. Admitted.
-  Example validate3 : validate goodProgram3 = true. Admitted.
-  Example validate4 : validate goodProgram4 = true. Admitted.
-  Example validate5 : validate goodProgram5 = true. Admitted.
-  Example validate6 : validate goodProgram6 = true. Admitted.
-  Example validate7 : validate goodProgram7 = true. Admitted.
-  Example validateb1 : validate badProgram1 = false. Admitted.
-  Example validateb2 : validate badProgram2 = false. Admitted.
+  Example validate1 : validate goodProgram1 = true. Proof. simplify. equality. Qed.
+  Example validate2 : validate goodProgram2 = true. Proof. simplify. equality. Qed.
+  Example validate3 : validate goodProgram3 = true. Proof. simplify. equality. Qed.
+  Example validate4 : validate goodProgram4 = true. Proof. simplify. equality. Qed.
+  Example validate5 : validate goodProgram5 = true. Proof. simplify. equality. Qed.
+  Example validate6 : validate goodProgram6 = true. Proof. simplify. equality. Qed.
+  Example validate7 : validate goodProgram7 = true. Proof. simplify. equality. Qed.
+  Example validateb1 : validate badProgram1 = false. Proof. simplify. equality. Qed.
+  Example validateb2 : validate badProgram2 = false. Proof. simplify. equality. Qed.
 
   (* Then, add your own example of a bad program here, and check that `validate`
    * returns `false` on it: *)
+  Definition test (p: Prog): Prop := validate p = fst (runPortable p 0).
 
-  Definition badProgram3 : Prog. Admitted.
-  Example validateb3 : validate badProgram3 = false. Admitted.
+  Definition badProgram3 := SetToThen 1 (DivThen 0 Done).
+  Example validateb3 : validate badProgram3 = false. Proof. simplify. equality. Qed.
+  Example valid1 : test badProgram3. Proof. compute. equality. Qed.
 
+  Definition bad2 := SetToThen 1 (DivThen 3 (VidThen 10 Done)).
+  Example valid2 : test bad2. Proof. compute. equality. Qed.
 
+  Definition ok1 := SetToThen 1 (DivThen 3 Done).
+  Example valid3: test ok1. Proof. compute. equality. Qed.
+  
+  Definition bad3 := SetToThen 10 (VidThen 1 (VidThen 2 Done)).
+  Example valid4: test bad3. Proof. compute. equality. Qed.
 
   (* Finally, before diving into the Rocq proof, try to convince yourself that
    * your code is correct by applying induction by hand.  Can you describe the
@@ -302,13 +382,59 @@ Module Impl.
    * proceeding. *)
 
   (** Proof sketch: **)
-  (* [[Fill in your proof sketch here.]] *)
+  (* 
+    By definition of validate, it suffices to show that whenever validate' p false 
+    returns true, the program p never divides by zero.
+    We'll proceed by induction on the program, and break the proof goal into the 
+    conjunction of two cases - one where the state is nonzero, and the other where 
+    it is not necessarily nonzero. When we do induction, we can split the IHp into
+    separate clauses in order to apply it. Then for each possible program node, we
+    need to show that it preserves the invariant between nz and s. 
+    We'll do this by simply calling IHp, which requires us to prove two premises
+    about nz and s before we are allowed to conclude the result. 
+   *)
 
   (* Now you're ready to write the proof in Rocq: *)
 
+  Lemma P (p: Prog) :
+    (validate' p true = true ->
+        forall s, s <> 0 -> runPortable p s = (true, run p s)) /\
+    (validate' p false = true ->
+        forall s, runPortable p s = (true, run p s)).
+  Proof. 
+    induct p; 
+    split; simplify; try equality; simplify; destruct IHp.
+
+    destruct (n ==n 0); apply H1. try apply H; linear_arithmetic.
+    cases n; simplify; linear_arithmetic; apply H; try linear_arithmetic. apply H; linear_arithmetic.
+    destruct (n ==n 0). linear_arithmetic. cases n; simplify; linear_arithmetic. 
+    destruct (n ==n 0). apply H1. apply H. apply H0. apply H. cases n; simplify; linear_arithmetic.
+
+    destruct (n ==n 0). apply H2; apply H. apply H1. apply H. linear_arithmetic.
+    destruct (n ==n 0); apply H1; apply H. 
+
+    destruct (n ==n 0). exfalso. discriminate H.
+    destruct (n ==n 1). 
+        apply H1. apply H. subst n. rewrite Nat.div_1_r. apply H0.
+        apply H2. apply H.
+
+    destruct (n ==n 0). exfalso. discriminate H.
+    destruct (n ==n 1). 
+        apply H1. apply H. apply H1. apply H.
+    destruct (s ==n 0). exfalso. apply H0. exact e.
+
+    apply H2. apply H. cases (n ==n 0). apply H2. apply H. apply H1. apply H. apply n0.
+
+    cases (n ==n 0). apply H1. apply H. apply H0. apply H. apply n0. 
+  Qed.
+
   Lemma validate_sound : forall p, validate p = true ->
     forall s, runPortable p s = (true, run p s).
-  Admitted.
+  Proof.
+    simplify.
+    unfold validate in H.
+    apply P. exact H. 
+  Qed.
 
   (* Here is the complete list of commands used in one possible solution:
     - Search, for example Search (_ + 0).
