@@ -228,25 +228,29 @@ Proof. simplify. specialize (f_equal (fun f => f x) H). simplify. equality. Qed.
    * this operation does: the argument [k] is a path, in which
    * [true] means "go left" and [false] means "go right".
    *)
-  Fixpoint lookup {A} (k : list bool) (t : bitwise_trie A) {struct t} : option A. Admitted.
+  Fixpoint lookup {A} (k : list bool) (t : bitwise_trie A) {struct t} : option A :=
+    match t with 
+    | Leaf => None
+    | Node l d r => match k with 
+                    | [] => d 
+                    | h :: lst => lookup lst (if h then l else r)
+                    end
+    end.
 
   Example lookup_example1 : lookup [] (Node Leaf (None : option nat) Leaf) = None.
-  Proof.
-  Admitted.
+  Proof. simplify. equality. Qed.
 
   Example lookup_example2 : lookup [false; true]
       (Node (Node Leaf (Some 2) Leaf) None (Node (Node Leaf (Some 1) Leaf) (Some 3) Leaf))
                             = Some 1.
-  Proof.
-  Admitted.
+  Proof. simplify. equality. Qed.
 
   (* [Leaf] represents an empty bitwise trie, so a lookup for
    * any key should return [None].
    *)
   Theorem lookup_empty {A} (k : list bool)
     : lookup k (Leaf : bitwise_trie A) = None.
-  Proof.
-  Admitted.
+  Proof. simplify. equality. Qed.
 
   (* HINT 3 (see Pset3Sig.v) *)
 
@@ -266,8 +270,22 @@ Proof. simplify. specialize (f_equal (fun f => f x) H). simplify. equality. Qed.
    * that creates a singleton tree (a tree containing a single
    * key-value pair).
    *)
+
+  Definition singleton {A} (v: option A) : bitwise_trie A :=
+    Node Leaf v Leaf.
+
   Fixpoint insert {A} (k : list bool) (v : option A) (t : bitwise_trie A) {struct t}
-    : bitwise_trie A. Admitted.
+  : bitwise_trie A. Admitted.
+     (* :=
+    t *)
+    (* TODO *)
+  (* match t with 
+  | Leaf => None
+  | Node l d r => match k with 
+              | [] => d 
+              | h :: lst => lookup lst (if h then l else r)
+              end
+  end. *)
 
   Example insert_example1 : lookup [] (insert [] None (Node Leaf (Some 0) Leaf)) = None.
   Proof.
