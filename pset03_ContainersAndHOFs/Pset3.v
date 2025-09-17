@@ -66,18 +66,17 @@ Module Impl.
 
   Lemma compose_id_l : forall A B (f: A -> B),
       id ∘ f = f.
-  Proof.
-  Admitted.
+  Proof. simplify. apply fun_ext. simplify. unfold id. unfold compose. equality. Qed.
 
   Lemma compose_id_r : forall A B (f: A -> B),
       f ∘ id = f.
-  Proof.
-  Admitted.
+  Proof. simplify. apply fun_ext. simplify. unfold id. unfold compose. equality. Qed.
 
   Lemma compose_assoc : forall A B C D (f: A -> B) (g: B -> C) (h: C -> D),
       h ∘ (g ∘ f) = h ∘ g ∘ f.
   Proof.
-  Admitted.
+    simplify. apply fun_ext; simplify. unfold compose. equality.
+  Qed.
 
   (* The selfCompose function takes a function and applies this function n times
      to the argument. There are different ways of defining it, but let's
@@ -97,14 +96,15 @@ Module Impl.
      saying "to raise [base] to the power [e], apply the function that multiplies
      its argument by [base] to [1] [e] times".
      Define [exp] using [selfCompose] and [Nat.mul]. *)
-  Definition exp(base e: nat): nat. Admitted.
+  Definition exp(base e: nat): nat :=
+    selfCompose (mult base) e 1.
 
-  (* Once you define [exp], you can replace [Admitted.] below by [Proof. equality. Qed.] *)
-  Lemma test_exp_2_3: exp 2 3 = 8. Admitted.
-  Lemma test_exp_3_2: exp 3 2 = 9. Admitted.
-  Lemma test_exp_4_1: exp 4 1 = 4. Admitted.
-  Lemma test_exp_5_0: exp 5 0 = 1. Admitted.
-  Lemma test_exp_1_3: exp 1 3 = 1. Admitted.
+  (* Once you define [exp], you can replace [Proof. equality. Qed.] below by [Proof. equality. Qed.] *)
+  Lemma test_exp_2_3: exp 2 3 = 8. Proof. equality. Qed.
+  Lemma test_exp_3_2: exp 3 2 = 9. Proof. equality. Qed.
+  Lemma test_exp_4_1: exp 4 1 = 4. Proof. equality. Qed.
+  Lemma test_exp_5_0: exp 5 0 = 1. Proof. equality. Qed.
+  Lemma test_exp_1_3: exp 1 3 = 1. Proof. equality. Qed.
 
   (* And here's another example to illustrate [selfCompose]. Make sure you understand
      why its result is 256. *)
@@ -120,15 +120,24 @@ Module Impl.
      is the left inverse of the function that adds two to its argument. *)
   Example plus2minus2: left_inverse (fun (x: nat) => x + 2) (fun (x: nat) => x - 2).
   Proof.
-  Admitted.
+    unfold left_inverse. apply fun_ext; simplify. unfold compose. unfold id. linear_arithmetic.
+  Qed. 
 
   (* On the other hand, note that the other direction does not hold, because
      if a subtraction on natural numbers underflows, it just returns 0, so
      there are several [x] for which [x-2] returns 0 (namely 0, 1, and 2),
      so it can't have a left inverse. *)
   Example minus2plus2: ~ left_inverse (fun (x: nat) => x - 2) (fun (x: nat) => x + 2).
-  Proof.
-  Admitted.
+  Proof. unfold left_inverse. intro H. unfold compose in H.
+    (* H holds when we make both sides take 0 as function *)
+    specialize (f_equal (fun f => f 0) H). 
+    simplify. unfold id in H0. linear_arithmetic.
+  Qed.
+
+  Lemma specialize_fun_eq : forall {A B: Type},
+    forall (f g: A -> B), forall x,
+        f = g -> f x = g x.
+Proof. simplify. specialize (f_equal (fun f => f x) H). simplify. equality. Qed. 
 
   (* Let us make the intuition from the previous paragraph more
      concrete, by proving that a function that is not injective
@@ -141,7 +150,14 @@ Module Impl.
       left_inverse f g ->
       (forall x y, f x = f y -> x = y).
   Proof.
-  Admitted.
+    simplify. unfold left_inverse in H. apply (f_equal g) in H0. replace (g (f x)) with ((compose g f) x); cycle 1. unfold compose. equality. 
+    pose proof (fun x => specialize_fun_eq (g ∘ f) id x H) as Hforall.
+    unfold compose in Hforall. 
+    replace x with (id x); cycle 1. unfold id; equality.
+    replace y with (id y); cycle 1. unfold id; equality.
+    rewrite <- Hforall.
+    rewrite <- Hforall. exact H0.
+  Qed.
 
   (* Bonus question (no points): can you prove the reverse;
      i.e., can you prove that all injective functions have left
@@ -152,8 +168,12 @@ Module Impl.
      type arguments explicitly, because otherwise Rocq would not be able to infer them." *)
   Lemma left_inverse_id: forall A, left_inverse (@id A) (@id A).
   Proof.
-  Admitted.
+    simplify. apply fun_ext; simplify. unfold compose. unfold id. equality.
+  Qed.
 
+  Lemma selfCompose_succ_alt{A: Type}: forall (g: A -> A) (n: nat),
+    g ∘ selfCompose g n = selfCompose g n ∘ g.
+  Admitted.
 
   (* Now we can start proving interesting facts about inverse functions: *)
   (* Here's how to invert the power function: *)
@@ -162,7 +182,14 @@ Module Impl.
       left_inverse f g ->
       left_inverse (selfCompose f n) (selfCompose g n).
   Proof.
-  Admitted.
+    simplify. unfold left_inverse. unfold left_inverse in H. 
+    induct n. 
+    - unfold selfCompose. apply fun_ext. simplify. unfold compose. unfold id. equality.
+    - simplify. replace (f ∘ selfCompose f n) with (selfCompose f n ∘ f); cycle 1. { apply eq_sym. apply selfCompose_succ_alt. }
+    replace (g ∘ selfCompose g n ∘ (selfCompose f n ∘ f)) with (g ∘ (selfCompose g n ∘ selfCompose f n) ∘ f); cycle 1. 
+    { rewrite compose_assoc. equality. }
+    rewrite IHn. rewrite compose_id_r. exact H. exact H. 
+  Qed.
 
   (** ** Polymorphic container types *)
 
