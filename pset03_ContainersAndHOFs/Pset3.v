@@ -173,7 +173,9 @@ Proof. simplify. specialize (f_equal (fun f => f x) H). simplify. equality. Qed.
 
   Lemma selfCompose_succ_alt{A: Type}: forall (g: A -> A) (n: nat),
     g ∘ selfCompose g n = selfCompose g n ∘ g.
-  Admitted.
+  Proof. simplify. unfold compose. apply fun_ext; simplify.
+    induct n; simplify. easy. unfold compose. rewrite IHn. easy.
+  Qed.
 
   (* Now we can start proving interesting facts about inverse functions: *)
   (* Here's how to invert the power function: *)
@@ -271,34 +273,45 @@ Proof. simplify. specialize (f_equal (fun f => f x) H). simplify. equality. Qed.
    * key-value pair).
    *)
 
-  Definition singleton {A} (v: option A) : bitwise_trie A :=
-    Node Leaf v Leaf.
+  Fixpoint singleton {A} (k : list bool) (v: option A) : bitwise_trie A :=
+    match k with
+    | [] => Node Leaf v Leaf
+    | h :: t => if h then Node (singleton t v) None Leaf 
+                else Node Leaf None (singleton t v)
+    end.
 
   Fixpoint insert {A} (k : list bool) (v : option A) (t : bitwise_trie A) {struct t}
-  : bitwise_trie A. Admitted.
-     (* :=
-    t *)
-    (* TODO *)
-  (* match t with 
-  | Leaf => None
+  : bitwise_trie A :=
+  match t with 
+  | Leaf => singleton k v 
   | Node l d r => match k with 
-              | [] => d 
-              | h :: lst => lookup lst (if h then l else r)
-              end
-  end. *)
+                  | [] => Node l v r
+                  | hd::tl => if hd then Node (insert tl v l) d r
+                              else Node l d (insert tl v r)
+                  end
+  end.
 
   Example insert_example1 : lookup [] (insert [] None (Node Leaf (Some 0) Leaf)) = None.
-  Proof.
-  Admitted.
+  Proof. simplify. equality. Qed.
 
   Example insert_example2 : lookup [] (insert [true] (Some 2) (Node Leaf (Some 0) Leaf)) = Some 0.
-  Proof.
-  Admitted.
+  Proof. simplify. equality. Qed. 
 
-  Theorem lookup_insert {A} (k : list bool) (v : option A) (t : bitwise_trie A) :
+Lemma lookup_singleton {A} (k : list bool) (v : option A)
+  : lookup k (singleton k v) = v.
+  Proof. induct k; simplify. equality.
+    destruct a; simplify. apply IHk. apply IHk.
+  Qed. 
+
+Theorem lookup_insert {A} (k : list bool) (v : option A) (t : bitwise_trie A) :
     lookup k (insert k v t) = v.
   Proof.
-  Admitted.
+    induct k; simplify; induct t; simplify. 
+    - equality. 
+    - equality.
+    - destruct a; simplify. apply lookup_singleton. apply lookup_singleton.
+    - destruct a; simplify. apply IHk. apply IHk.
+  Qed.
 
   (* Define an operation to "merge" that takes two bitwise tries and merges
    * them together. The [merge] definition should combine two bitwise tries, 
@@ -316,40 +329,76 @@ Proof. simplify. specialize (f_equal (fun f => f x) H). simplify. equality. Qed.
    * the tries once.
    *)
   
-  Fixpoint merge {A} (t1 t2 : bitwise_trie A) : bitwise_trie A. Admitted.    
-  
+  Fixpoint merge {A} (t1 t2 : bitwise_trie A) : bitwise_trie A :=
+  match t1 with 
+  | Leaf => t2
+  | Node l d r => match t2 with 
+                  | Leaf => t1
+                  | Node l2 d2 r2 => 
+                  Node (merge l l2) 
+                       (match d with 
+                        |None => d2
+                        |Some _ => d
+                        end) 
+                       (merge r r2)
+                  end
+  end.
 
   Lemma merge_example1 :
     merge (Node Leaf (Some 1) Leaf) (Node Leaf (Some 2) Leaf) =
     Node Leaf (Some 1) Leaf.
-  Proof. Admitted.
+  Proof. simplify. equality. Qed.
   Lemma merge_example2 :
     merge Leaf (Node Leaf (@None nat) Leaf) = Node Leaf None Leaf.
-  Proof. Admitted.
+  Proof. simplify. equality. Qed.
   Lemma merge_example3 :
     merge (Node Leaf None Leaf) (Node Leaf (Some 2) Leaf) =
     Node Leaf (Some 2) Leaf.
-  Proof. Admitted.
+  Proof. simplify. equality. Qed.
     
   Theorem left_lookup_merge {A} : forall (t1 t2 : bitwise_trie A) k v,
       lookup k t1 = Some v ->
       lookup k (merge t1 t2) = Some v.
-  Proof.
-  Admitted.
+  Proof. 
+    induct t1; simplify.
+    - easy.
+    - induct t2; simplify. easy.
+      induct k. destruct d; easy.
+      destruct a; simplify. apply IHt1_1; easy. apply IHt1_2; exact H.
+  Qed. 
 
   Theorem lookup_merge_None {A} : forall (t1 t2 : bitwise_trie A) k,
       lookup k (merge t1 t2) = None ->
       lookup k t1 = None /\ lookup k t2 = None.
-  Proof.
-  Admitted.
-  
+  Proof. induct t1; simplify.
+    - easy.
+    - induct t2; simplify; split; try easy.
+    { induct k. induct d; easy.
+    destruct a. pose proof (IHt1_1 _ _ H); easy. pose proof (IHt1_2 _ _ H); easy. }
+    { induct k. induct d; easy.
+    destruct a. pose proof (IHt1_1 _ _ H); easy. pose proof (IHt1_2 _ _ H); easy. }
+  Qed.
 
   (* HINT 5 (see Pset3Sig.v) *)
+  Lemma merge_id {A} : forall (t1 : bitwise_trie A),
+    merge t1 t1 = t1.
+  Proof. induct t1; simplify. easy. rewrite IHt1_1. rewrite IHt1_2.
+    replace (match d with | Some _ | _ => d end) with d; cycle 1. { cases d; easy. } easy.
+  Qed.
+
+  Lemma merge_idempotent {A} : forall (t1 t2 : bitwise_trie A),
+    merge t1 (merge t1 t2) = merge t1 t2.
+  Proof. induct t1; induct t2; simplify; try easy. replace (match d with | Some _ | _ => d end) with d; cycle 1. { cases d; easy. } rewrite merge_id. rewrite merge_id. easy. rewrite IHt1_1. rewrite IHt1_2. replace (match d with | Some _ => d | None => match d with | Some _ => d | None => d0 end end) with (match d with | Some _ => d | None => d0 end). easy. destruct d; simplify; easy.
+  Qed.
+
   Theorem merge_selfCompose {A} : forall n (t1 t2 : bitwise_trie A),
       0 < n ->
       selfCompose (merge t1) n t2 = merge t1 t2.
   Proof.
-  Admitted.
+    induct n; simplify. easy.  
+    unfold compose. induct n; simplify. unfold id; easy. 
+    rewrite IHn0. apply merge_idempotent. linear_arithmetic.
+  Qed.
 
   (* Define an operation to "mirror" that takes a tree (not necessarily a 
    * trie) and returns the mirrored version of the tree.
@@ -361,22 +410,36 @@ Proof. simplify. specialize (f_equal (fun f => f x) H). simplify. equality. Qed.
    * list resulting from the flattening of that same tree.
  *)
   
-   Fixpoint mirror {A} (t : tree A) : tree A. Admitted.     
+  Fixpoint mirror {A} (t : tree A) : tree A :=
+    match t with 
+    | Leaf => Leaf
+    | Node l d r => Node (mirror r) d (mirror l)
+    end.
 
   Example mirror_test1 :
     mirror (Node Leaf 1 (Node Leaf 2 (Node Leaf 3 Leaf))) =
     Node (Node (Node Leaf 3 Leaf) 2 Leaf) 1 Leaf.
-  Admitted.
+  Proof. easy. Qed. 
   
   Theorem mirror_mirror_id {A} : forall (t : tree A),
       mirror (mirror t) = t.
-  Proof.
-  Admitted.
+  Proof. induct t; simplify; try easy. rewrite IHt1. rewrite IHt2. easy. Qed.
+  
+  Lemma rev_concat {A} : forall (l1 l2 : list A) (d : A), 
+    rev l2 ++ d :: rev l1 = rev (l1 ++ d :: l2).
+  Proof. simplify. induct l1; simplify. 
+    induct l2; simplify; easy.
+    replace (rev l2 ++ d :: rev l1 ++ [a]) with ((rev l2 ++ d :: rev l1) ++ [a]). rewrite IHl1; easy. rewrite <- app_assoc. equality.
+  Qed. 
   
   Theorem flatten_mirror_rev {A} : forall (t : tree A),
       flatten (mirror t) = rev (flatten t).
   Proof.
-  Admitted.
+    induct t; try easy.
+    simpl mirror. simpl. 
+    rewrite IHt1. rewrite IHt2. 
+    apply rev_concat.
+  Qed.
 
   (** ** HOFs on lists and trees **)
   
@@ -386,22 +449,33 @@ Proof. simplify. specialize (f_equal (fun f => f x) H). simplify. equality. Qed.
    * structure intact.
    *)
   Fixpoint tree_map {A B : Type} (f : A -> B) (t : tree A)
-    : tree B. Admitted.
+    : tree B :=
+    match t with 
+    | Leaf => Leaf
+    | Node l d r => Node (tree_map f l) (f d) (tree_map f r)
+    end. 
 
   Example tree_map_example :
     tree_map (fun x => x + 1) (Node (Node Leaf 1 Leaf) 2 (Node Leaf 3 (Node Leaf 4 Leaf)))
     = (Node (Node Leaf 2 Leaf) 3 (Node Leaf 4 (Node Leaf 5 Leaf))).
-  Proof.
-  Admitted.
+Proof. easy. Qed. 
 
   (* [tree_map_flatten] shows that [map]
    * and [tree_map] are related by the [flatten] function.
    *)
   (* HINT 6 (see Pset3Sig.v) *)
+  Lemma map_append : forall {A B : Type} (f : A -> B) (xs ys : list A),
+    map f (xs ++ ys) = map f xs ++ map f ys.
+  Proof. simplify. induct xs; simplify; try easy. rewrite IHxs. easy.
+  Qed. 
+
   Theorem tree_map_flatten : forall {A B : Type} (f : A -> B) (t : tree A),
       flatten (tree_map f t) = map f (flatten t).
   Proof.
-  Admitted.
+    induct t; simplify. try easy. rewrite IHt1. rewrite IHt2. 
+    replace (f d :: map f (flatten t2)) with (map f (d :: flatten t2)); cycle 1. easy.
+    rewrite map_append; easy.
+  Qed. 
 
   (* This function asserts that a predicate holds over all
      elements of a tree. *)
@@ -414,30 +488,38 @@ Proof. simplify. specialize (f_equal (fun f => f x) H). simplify. equality. Qed.
   (* Define a similar function for the [exists] case; that is, define
      a function that asserts that a predicate holds for at least
      one value of a tree. *)
-  Fixpoint tree_exists {A} (P: A -> Prop) (tr: tree A) {struct tr} : Prop.
-  Admitted.
+  Fixpoint tree_exists {A} (P: A -> Prop) (tr: tree A) {struct tr} : Prop := 
+  match tr with 
+  | Leaf => False
+  | Node l d r => tree_exists P l \/ P d \/ tree_exists P r
+  end.
 
   (* Two sanity checks for your function: *)
   Lemma tree_exists_Leaf {A} (P: A -> Prop):
     ~ tree_exists P Leaf.
-  Proof.
-  Admitted.
+  Proof. easy. Qed. 
 
   Lemma tree_forall_exists {A} (P: A -> Prop):
     forall tr, tr <> Leaf -> tree_forall P tr -> tree_exists P tr.
-  Proof.
-  Admitted.
+  Proof. induct tr; simplify. easy. propositional.
+  Qed.
 
   (* What does the following theorem mean? Write a short
      explanation below. *)
-
+    (* 
+    This lemma says that if P is true for all elements of the tree,
+    then for *any* value d, if there exists an element in the tree 
+    which is equal to d, then P holds for that value d. 
+    *)
 
   Lemma tree_forall_sound {A} (P: A -> Prop):
     forall tr, tree_forall P tr ->
           forall d, tree_exists (fun d' => d' = d) tr ->
                P d.
-  Proof.
-  Admitted.
+  Proof. induct tr; simplify. easy. destruct H0.
+    - inversion H. pose proof (IHtr1 H1). pose proof (H3 _ H0). exact H4.
+    - destruct H0. inversion H. inversion H2. rewrite H0 in H3. exact H3. inversion H. inversion H2. pose proof (IHtr2 H4). pose proof (H5 _ H0). exact H6.
+  Qed. 
 
   (** ** Binary search trees **)
 
@@ -503,10 +585,27 @@ Proof. simplify. specialize (f_equal (fun f => f x) H). simplify. equality. Qed.
   
 
   (* HINT 7 (see Pset3Sig.v) *)
+  Lemma tree_forall_implies:
+  forall tr (P Q: Z -> Prop),
+    tree_forall P tr ->
+    (forall x, P x -> Q x) ->
+    tree_forall Q tr.
+  Proof. simplify. induct tr; simplify. easy.
+  destruct H as (Ha & Hb & Hc).
+  pose proof ((IHtr1 P Q Ha) H0).
+  pose proof ((IHtr2 P Q Hc) H0).
+  pose proof (H0 d Hb).
+  propositional.
+  Qed.
+
   Lemma bst_implies:
     forall tr s, bst tr s -> tree_forall s tr.
   Proof.
-  Admitted.
+    induct tr; simplify; try easy. destruct H as (a & b & c). propositional. 
+    pose proof (IHtr1 _ b). pose proof (IHtr2 _ c). 
+    - apply tree_forall_implies with (P := (fun x : Z => s x /\ x < d)). exact H. propositional.
+    - pose proof (IHtr1 _ b). pose proof (IHtr2 _ c).  apply tree_forall_implies with (P := (fun x : Z => s x /\ d < x)). exact H0. propositional.
+  Qed. 
 
   (* Next, let's prove that elements of the left subtree of a
      BST node are less than the node's data and that all
@@ -519,7 +618,12 @@ Proof. simplify. specialize (f_equal (fun f => f x) H). simplify. equality. Qed.
       bst (Node l d r) s ->
       tree_forall (fun x => x < d) l /\ tree_forall (fun x => d < x) r.
   Proof.
-  Admitted.
+    simplify. destruct H as (a & b & c).
+    apply bst_implies in b.
+    apply bst_implies in c. propositional. 
+    apply tree_forall_implies with (P := (fun x : Z => s x /\ x < d)). exact b. propositional.
+    apply tree_forall_implies with (P := (fun x : Z => s x /\ d < x)). exact c. propositional.
+  Qed. 
 
   (* Here is another convenient property: if two sets are the
      same, then a bst representing one also represents the
@@ -531,7 +635,16 @@ Proof. simplify. specialize (f_equal (fun f => f x) H). simplify. equality. Qed.
       (forall x, P x <-> Q x) ->
       bst tr Q.
   Proof.
-  Admitted.
+    simplify. 
+    induct tr; simplify. pose proof (H x). propositional. 
+    rewrite H0 in H1. propositional. 
+    rewrite <- H0.
+    destruct H as (a & b & c).
+    split. exact a. split. 
+    pose proof (IHtr1 (fun x : Z => P x /\ x < d) (fun x : Z => Q x /\ x < d)). pose proof (H b). 
+    apply H1. propositional. apply H0.   exact H3. apply H0. exact H3.
+    pose proof (IHtr2 (fun x : Z => P x /\ d < x) (fun x : Z => Q x /\ d < x)). pose proof (H c). apply H1. propositional. apply H0. exact H3. apply H0; exact H3. 
+  Qed. 
 
   (* Let's prove something about the way we can map over binary search
      trees while preserving the bst structure. In order to preserve the
@@ -552,6 +665,7 @@ Proof. simplify. specialize (f_equal (fun f => f x) H). simplify. equality. Qed.
       (forall x, P x <-> Q (f x)) ->
       bst (tree_map f tr) Q.
   Proof.
+    simplify. 
   Admitted.
 
   (* Monotone functions can be characterized as monotone increasing or 
