@@ -665,8 +665,23 @@ Proof. easy. Qed.
       (forall x, P x <-> Q (f x)) ->
       bst (tree_map f tr) Q.
   Proof.
-    simplify. 
-  Admitted.
+    induct tr; simplify. 
+    pose proof (H (g x)).
+    pose proof (H2 (g x)).
+    replace (~ Q x) with (~ Q (f (g x))); cycle 1. 
+        { replace (~ Q x) with (~ Q (id x)); cycle 1. easy.
+          replace (f (g x)) with (id x); cycle 1.
+          unfold left_inverse in H0. replace (f (g x)) with ((compose f g) x). rewrite H0. easy. easy. easy. } 
+    propositional.
+
+    propositional.
+    repeat split.
+    - propositional. apply H2. exact H3.
+    - pose proof (IHtr1 _ (fun x : Z => Q x /\ x < f d) _ _ H H0 H1); apply H4.
+      simplify. rewrite H1. rewrite H2. propositional. 
+    - pose proof (IHtr2 _ (fun x : Z => Q x /\ f d < x) _ _ H5 H0 H1); apply H4.
+      simplify. rewrite H1. rewrite H2. propositional.
+  Qed.
 
   (* Monotone functions can be characterized as monotone increasing or 
      monotone decreasing. In the case of a strictly monotonically decreasing
@@ -686,8 +701,23 @@ Proof. easy. Qed.
       (forall x, P x <-> Q (f x)) ->
       bst (mirror (tree_map f tr)) Q.
   Proof.
-  Admitted.
-  
+    induct tr; simplify.
+    - specialize (H (g x)). specialize (H2 (g x)). 
+        replace (x) with (f (g x)); cycle 1. 
+        { replace (x) with (id x) at 2; cycle 1. easy.
+        unfold left_inverse in H0. replace (f (g x)) with ((compose f g) x). rewrite H0. easy. easy. } propositional.
+    - split. propositional. apply H2 with (x := d). exact H3. split.
+        + eapply IHtr2 with (P:=(fun x : Z => P x /\ d < x)) (Q:= (fun x : Z => Q x /\ x < f d)) (g:=g); try propositional. 
+        rewrite <- H2. propositional. 
+        pose proof (H1 d x). pose proof (Z.gt_lt (f d) (f x)). linear_arithmetic. 
+        rewrite H2; propositional. 
+        pose proof (Z.gt_lt x d). pose proof (H1 d x). linear_arithmetic.
+        + eapply IHtr1 with (P:= (fun x : Z => P x /\ x < d)) (Q:=(fun x : Z => Q x /\ f d < x)) (g:=g); try propositional.
+        rewrite <- H2. propositional.
+        specialize (H1 x d). linear_arithmetic. rewrite H2; propositional.
+        specialize (H1 x d). linear_arithmetic.
+  Qed. 
+
   (* [member] computes whether [a] is in [tr], but to do so it *relies* on the
      [bst] property -- if [tr] is not a valid binary search tree, [member]
      will (and should, for performance) give arbitrarily incorrect answers. *)
@@ -706,8 +736,16 @@ Proof. easy. Qed.
   Lemma member_bst : forall tr s a,
       bst tr s -> bst_member a tr = true <-> s a.
   Proof.
-  Admitted.
+    induct tr; simplify. propositional; exfalso. discriminate H0. apply H with (x:= a). exact H0. 
 
+    cases (compare a d); simplify. 
+    - specialize (IHtr1 (fun x : Z => s x /\ x < d) a).
+      propositional. 
+    - propositional. rewrite e. propositional.
+    - specialize (IHtr2 (fun x : Z => s x /\ d < x) a). 
+      propositional. 
+  Qed. 
+ 
   (* Next week, we will look at insertion and deletion in
      BSTs. *)
 
