@@ -198,11 +198,23 @@ Module Impl.
      tree in cases where the expected structure is not present. *)
   
   (* HINT 1 (see Pset4Sig.v) *)
-  Definition rotate (T : tree) : tree.
-  Admitted.
+  Definition rotate (T : tree) : tree :=
+    match T with
+    | Node t L R =>
+        match L with
+        | Node l A B => Node l A (Node t B R)
+        | _ => T
+        end
+    | _ => T
+    end.
 
   Lemma bst_rotate T s (H : bst T s) : bst (rotate T) s.
-  Admitted.
+  Proof.
+  cases T; propositional.
+  cases T1; propositional.
+  simplify; propositional;
+      use_bst_iff_assumption; propositional; linear_arithmetic.
+  Qed.
 
   (* There is a hint in the signature file that completely gives away the proofs
    * of these rotations. We recommend you study that code after completing this
@@ -211,8 +223,17 @@ Module Impl.
   Lemma bst_insert : forall tr s a,
       bst tr s ->
       bst (insert a tr) (fun x => s x \/ x = a).
-  Admitted.
-
+  Proof. 
+    simplify; induct tr; simplify; propositional; 
+    try linear_arithmetic; 
+    try (specialize (H x); propositional).
+    cases (compare a d); simplify; propositional;
+      try (specialize (IHtr1 (fun x : t => s x /\ x < d) a H);
+      try use_bst_iff_assumption; propositional; linear_arithmetic).
+      try (specialize (IHtr2 (fun x : t => s x /\ d < x) a H2);
+      use_bst_iff_assumption; propositional; linear_arithmetic).
+  Qed.
+  
   (* To prove [bst_delete], you will need to write specifications for its helper
      functions, find suitable statements for proving correctness by induction, and use
      proofs of some helper functions in proofs of other helper functions. The hints
