@@ -233,7 +233,7 @@ Module Impl.
       try (specialize (IHtr2 (fun x : t => s x /\ d < x) a H2);
       use_bst_iff_assumption; propositional; linear_arithmetic).
   Qed.
-  
+
   (* To prove [bst_delete], you will need to write specifications for its helper
      functions, find suitable statements for proving correctness by induction, and use
      proofs of some helper functions in proofs of other helper functions. The hints
@@ -246,9 +246,33 @@ Module Impl.
      the lemmas you prove about one function need to specify everything a caller
      would need to know about this function. *)
 
+  Lemma rightmost_in_set : forall tr s n, bst tr s /\ rightmost tr = Some n -> s n.
+Proof. Admitted.
+
   (* HINT 2-5 (see Pset4Sig.v) *)
   Lemma bst_delete : forall tr s a, bst tr s ->
     bst (delete a tr) (fun x => s x /\ x <> a).
+  Proof.
+    simplify; induct tr; simplify; propositional.
+    - apply (H x). trivial.
+    - cases (compare a d); simplify; propositional; try linear_arithmetic.
+        + specialize (IHtr1 (fun x : t => (s x /\ x < d)) a H). use_bst_iff_assumption; propositional. 
+        + specialize (IHtr2 (fun x : t => (s x /\ d < x)) a H2). use_bst_iff_assumption; propositional. linear_arithmetic.
+        + unfold merge_ordered; cases (rightmost tr1); simplify; propositional. 
+            * destruct (Nat.lt_trichotomy n d) as [Hlt | [He | Hgt]].
+              apply rightmost_in_set with (tr := tr1).
+
+
+            cases tr1; simplify. {exfalso; discriminate Heq. } propositional.
+            * use_bst_iff_assumption; propositional; try linear_arithmetic. .
+    (* Consider [cases (rightmost tr2)] or [cases (is_leaf tr2)] instead of [cases tr2]. Not breaking apart the tree itself can avoid a mess.
+    
+    A convenient way to specify "the largest element in this set" is to say that all elements in this set are no larger than the given element. 
+    
+    merge_ordered needs a rather strong precondition. It does not work correctly for merging just any two trees. However, it is called in a rather specific scenario. (And it is feasible to prove its use by inlining it, but we found a separate specification helpful.) Why is it bad to call merge_ordered [3,4] [1,2]?
+    
+    Our proof, if avoiding eapply, contains a couple of long apply-with invocations, for example:
+    apply bst_iff with (P:=let S := (fun x : t => S x /\ d < x) in (fun x : t => S x /\ x < rm)). *)
   Admitted.
 
   (* Great job! Now you have proven all tree-structure-manipulating operations
