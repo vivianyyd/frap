@@ -247,24 +247,38 @@ Module Impl.
      would need to know about this function. *)
 
   Lemma rightmost_in_set : forall tr s n, bst tr s /\ rightmost tr = Some n -> s n.
-Proof. Admitted.
+  Proof. Admitted.
 
-  (* HINT 2-5 (see Pset4Sig.v) *)
-  Lemma bst_delete : forall tr s a, bst tr s ->
-    bst (delete a tr) (fun x => s x /\ x <> a).
+  Lemma rightmost_invariant : forall tr s n, bst tr s /\ rightmost tr = Some n -> bst (delete_rightmost tr) (fun x : t => s x /\ x < n) /\ s n.
+  Proof. Admitted.
+
+  Lemma another_rightmost_invariant : forall tr s n, bst tr s /\ rightmost tr = Some n -> (forall x, s x -> x < n).
+  Proof. Admitted. 
+
+  Lemma merge_invariant : forall tr1 tr2 s d, 
+    bst tr1 (fun x : t => s x /\ x < d) /\ bst tr2 (fun x:t => s x /\ d < x) -> bst (merge_ordered tr1 tr2) (fun x:t => s x /\ (x = d -> False)).
   Proof.
-    simplify; induct tr; simplify; propositional.
-    - apply (H x). trivial.
-    - cases (compare a d); simplify; propositional; try linear_arithmetic.
-        + specialize (IHtr1 (fun x : t => (s x /\ x < d)) a H). use_bst_iff_assumption; propositional. 
-        + specialize (IHtr2 (fun x : t => (s x /\ d < x)) a H2). use_bst_iff_assumption; propositional. linear_arithmetic.
-        + unfold merge_ordered; cases (rightmost tr1); simplify; propositional. 
-            * destruct (Nat.lt_trichotomy n d) as [Hlt | [He | Hgt]].
-              apply rightmost_in_set with (tr := tr1).
+    simplify. unfold merge_ordered.
+    cases (rightmost tr1); simplify; propositional.
+    - pose proof (rightmost_in_set tr1 (fun x : t => s x /\ x < d) n (conj H0 Heq)). 
+      propositional; apply H.
+    - pose proof (rightmost_invariant tr1 (fun x : t => s x /\ x < d) n (conj H0 Heq)). 
+      propositional. linear_arithmetic.
+    - pose proof (rightmost_invariant tr1 (fun x : t => s x /\ x < d) n (conj H0 Heq)).
+      propositional.
+      use_bst_iff_assumption; simplify; propositional; linear_arithmetic.
+    - pose proof (rightmost_in_set tr1 (fun x : t => s x /\ x < d) n (conj H0 Heq)). 
+      propositional.
+      use_bst_iff_assumption. simplify. split. propositional; linear_arithmetic. simplify. split. propositional.
+        cases (compare d x). trivial. exfalso; rewrite e in H2; propositional. exfalso.
+        pose proof (another_rightmost_invariant tr1 (fun x : t => s x /\ x < d) n (conj H0 Heq)). propositional. 
+        pose proof (H3 x (conj H2 l)). linear_arithmetic.
+    - cases tr1; simplify; cycle 1. 
+        + exfalso. cases (rightmost tr1_2); discriminate Heq. 
+        + use_bst_iff_assumption; simplify; propositional. linear_arithmetic. 
+          cases (compare x d); simplify; try linear_arithmetic. exfalso. pose proof (H0 x (conj H2 l)). trivial.
+  Qed.
 
-
-            cases tr1; simplify. {exfalso; discriminate Heq. } propositional.
-            * use_bst_iff_assumption; propositional; try linear_arithmetic. .
     (* Consider [cases (rightmost tr2)] or [cases (is_leaf tr2)] instead of [cases tr2]. Not breaking apart the tree itself can avoid a mess.
     
     A convenient way to specify "the largest element in this set" is to say that all elements in this set are no larger than the given element. 
@@ -273,7 +287,22 @@ Proof. Admitted.
     
     Our proof, if avoiding eapply, contains a couple of long apply-with invocations, for example:
     apply bst_iff with (P:=let S := (fun x : t => S x /\ d < x) in (fun x : t => S x /\ x < rm)). *)
-  Admitted.
+
+  (* HINT 2-5 (see Pset4Sig.v) *)
+  Lemma bst_delete : forall tr s a, bst tr s ->
+    bst (delete a tr) (fun x => s x /\ x <> a).
+  Proof.
+    simplify; induct tr; simplify; propositional.
+    - apply (H x). trivial.
+    - cases (compare a d); simplify; propositional; try linear_arithmetic; 
+        try (specialize (IHtr1 (fun x : t => (s x /\ x < d)) a H); 
+            use_bst_iff_assumption; propositional; 
+            try linear_arithmetic); 
+        try (specialize (IHtr2 (fun x : t => (s x /\ d < x)) a H2); 
+            use_bst_iff_assumption; propositional; 
+            try linear_arithmetic).
+        rewrite e; apply merge_invariant with (d:=d); propositional.
+  Qed.
 
   (* Great job! Now you have proven all tree-structure-manipulating operations
      necessary to implement a balanced binary search tree. Rebalancing heuristics
