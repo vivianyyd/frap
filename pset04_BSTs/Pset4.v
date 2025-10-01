@@ -247,13 +247,60 @@ Module Impl.
      would need to know about this function. *)
 
   Lemma rightmost_in_set : forall tr s n, bst tr s /\ rightmost tr = Some n -> s n.
-  Proof. Admitted.
+  Proof. 
+    simplify.
+    induct tr; simplify.
+    - propositional; exfalso; discriminate H1.
+    - cases (rightmost tr2); propositional.
+        + specialize (IHtr2 (fun x : t => s x /\ d < x) _ (conj H3 H1)). simplify. propositional.
+        + injection H1 as H1. rewrite H1 in H. exact H. 
+  Qed.
 
-  Lemma rightmost_invariant : forall tr s n, bst tr s /\ rightmost tr = Some n -> bst (delete_rightmost tr) (fun x : t => s x /\ x < n) /\ s n.
-  Proof. Admitted.
+  Lemma rightmost_max : forall tr s n, bst tr s /\ rightmost tr = Some n -> (forall x, s x -> ~ (n < x)).
+  Proof. 
+    propositional; induct tr; simplify. 
+    exfalso; discriminate H1.
+    propositional; simplify. 
+    cases (rightmost tr2). 
+    - cases (compare d x); propositional; simplify. 
+        + (* right tree *) pose proof (IHtr2 _ n H5 H1 x); apply H4; propositional.
+        + (* root node *) 
+          pose proof (rightmost_in_set _ _ _ (conj H5 Heq)); simplify. injection H1 as H1. rewrite H1 in H4. 
+          rewrite e in H4. linear_arithmetic. 
+        + (* left tree *)
+          pose proof (rightmost_in_set _ _ _ (conj H5 Heq)); simplify. injection H1 as H1. rewrite H1 in H4.
+          assert (x < n) by linear_arithmetic. linear_arithmetic.
+    - injection H1 as H1. rewrite<-H1 in H2.
+        + cases tr2; simplify. specialize (H5 x). propositional.
+          cases (rightmost tr2_2); discriminate Heq.  
+  Qed. 
 
-  Lemma another_rightmost_invariant : forall tr s n, bst tr s /\ rightmost tr = Some n -> (forall x, s x -> x < n).
-  Proof. Admitted. 
+  Lemma rightmost_invariant : forall tr s n, 
+    bst tr s /\ rightmost tr = Some n -> 
+    bst (delete_rightmost tr) (fun x : t => s x /\ x < n) /\ s n.
+  Proof. 
+    simplify; propositional.
+    induct tr; simplify. 
+    - exfalso; discriminate H1.
+    - cases (is_leaf tr2); simplify. 
+        + cases tr2; simplify. 
+          * injection H1 as H1. rewrite H1 in H0. propositional. 
+          * exfalso; discriminate Heq.
+        + cases (rightmost tr2); simplify; cycle 1.
+          * cases tr2. simplify; exfalso; discriminate Heq. simplify. {cases (rightmost tr2_2); discriminate Heq0. }
+          * propositional;
+            pose proof (rightmost_in_set _ _ _ (conj H3 Heq0)); simplify; 
+            injection H1 as H1; rewrite H1 in H2.
+            (* root < n *)
+            linear_arithmetic.
+            (* left tree < n. suffices to show d < n *)
+            use_bst_iff_assumption; simplify; propositional. linear_arithmetic.
+            (* right tree < n *)
+            assert (Some n0 = Some n). { apply f_equal; apply H1. }
+            specialize (IHtr2 _ _ H3 H4); simplify. use_bst_iff_assumption; simplify.
+            propositional.
+    - apply rightmost_in_set with (tr := tr). propositional.
+  Qed.
 
   Lemma merge_invariant : forall tr1 tr2 s d, 
     bst tr1 (fun x : t => s x /\ x < d) /\ bst tr2 (fun x:t => s x /\ d < x) -> bst (merge_ordered tr1 tr2) (fun x:t => s x /\ (x = d -> False)).
@@ -271,7 +318,7 @@ Module Impl.
       propositional.
       use_bst_iff_assumption. simplify. split. propositional; linear_arithmetic. simplify. split. propositional.
         cases (compare d x). trivial. exfalso; rewrite e in H2; propositional. exfalso.
-        pose proof (another_rightmost_invariant tr1 (fun x : t => s x /\ x < d) n (conj H0 Heq)). propositional. 
+        pose proof (rightmost_max tr1 (fun x : t => s x /\ x < d) n (conj H0 Heq)). propositional. 
         pose proof (H3 x (conj H2 l)). linear_arithmetic.
     - cases tr1; simplify; cycle 1. 
         + exfalso. cases (rightmost tr1_2); discriminate Heq. 
