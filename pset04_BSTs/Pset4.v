@@ -326,15 +326,6 @@ Module Impl.
           cases (compare x d); simplify; try linear_arithmetic. exfalso. pose proof (H0 x (conj H2 l)). trivial.
   Qed.
 
-    (* Consider [cases (rightmost tr2)] or [cases (is_leaf tr2)] instead of [cases tr2]. Not breaking apart the tree itself can avoid a mess.
-    
-    A convenient way to specify "the largest element in this set" is to say that all elements in this set are no larger than the given element. 
-    
-    merge_ordered needs a rather strong precondition. It does not work correctly for merging just any two trees. However, it is called in a rather specific scenario. (And it is feasible to prove its use by inlining it, but we found a separate specification helpful.) Why is it bad to call merge_ordered [3,4] [1,2]?
-    
-    Our proof, if avoiding eapply, contains a couple of long apply-with invocations, for example:
-    apply bst_iff with (P:=let S := (fun x : t => S x /\ d < x) in (fun x : t => S x /\ x < rm)). *)
-
   (* HINT 2-5 (see Pset4Sig.v) *)
   Lemma bst_delete : forall tr s a, bst tr s ->
     bst (delete a tr) (fun x => s x /\ x <> a).
