@@ -84,7 +84,7 @@ Module Impl.
     - cases H; cases H.
       linear_arithmetic.
     - exists 2, 3.
-      propositional.
+      propositional. 
   Qed.
 
   (* We can also look at this in terms of a partial application: *)
@@ -159,7 +159,9 @@ Module Impl.
   | ValuesConst: forall v n1 n2,
       n1 = n2 ->
       values (Const n1) v n2
-  .
+  | ValuesVarDefined: forall v x a, (v $? x) = Some a -> values (Var x) v a
+  | ValuesVarUndefined: forall v x a, (v $? x) = None -> values (Var x) v a
+  | ValuesPlus: forall v a1 a2 a e1 e2, (values e1 v a1) -> (values e2 v a2) -> a = a1 + a2 -> values (Plus e1 e2) v a.
 
   (* Note that the following alternative would also work for ValuesConst and
      ValuesPlus:
@@ -201,20 +203,28 @@ Module Impl.
     (* Once you define the four constructors for "values", you can uncomment
        the script below. Make sure you understand how it relates to the proof
        tree above! *)
-    (*
+    
     eapply ValuesPlus with (a1 := 2) (a2 := a - 2).
     - eapply ValuesVarDefined. simplify. equality.
     - eapply ValuesVarUndefined. simplify. equality.
     - linear_arithmetic.
-      *)
-  Admitted.
+  Qed.
 
   (* Now, let's prove that "interp" and "values" are equivalent.
      First, [interp -> values]: *)
   Theorem interp_to_values: forall e v a,
       interp e v a -> values e v a.
   Proof.
-  Admitted.
+    simplify; induct e; simplify.
+    - eapply ValuesConst; linear_arithmetic.
+    - cases (v $? x).
+        + eapply ValuesVarDefined. rewrite H; trivial. 
+        + eapply ValuesVarUndefined. trivial. 
+    - cases H; cases H. eapply ValuesPlus with (a1:=x) (a2:=x0). 
+        + apply IHe1. propositional.
+        + apply IHe2. propositional. 
+        + propositional.
+  Qed. 
 
   (* To prove the other direction, we have a choice: we can either induct on
      [e] or directly on the proof of [values e v a], because [values] is an
@@ -227,7 +237,11 @@ Module Impl.
   Proof.
     induct 1; (* ← do not change this line *)
       simplify.
-  Admitted.
+    - linear_arithmetic.
+    - rewrite H; trivial.
+    - rewrite H; trivial. 
+    - exists a1, a2; propositional. 
+  Qed. 
 
   (* Now let's see how things look with an induction on e.  In this simple case,
      it's very similar: *)
@@ -235,8 +249,14 @@ Module Impl.
       values e v a -> interp e v a.
   Proof.
     induct e; (* ← not the best, but for the sake of the exercise do not change this line *)
-      simplify.
-  Admitted.
+      simplify; invert H. 
+    - trivial.
+    - rewrite H1; trivial.
+    - rewrite H1; trivial. 
+    - exists a1, a2; propositional.
+        + apply IHe1; trivial.
+        + apply IHe2; trivial.
+  Qed.
 
   (* Let's define nondeterministic big-step semantics for evaluating a command.
      Define [eval] as an Inductive Prop such that [eval v1 c v2] means
@@ -247,6 +267,33 @@ Module Impl.
   Inductive eval: valuation -> cmd -> valuation -> Prop :=
   | EvalSkip: forall v,
       eval v Skip v
+  | EvalAssign: forall v x e n, 
+    values e v n 
+    -> eval v (Assign x e) (v $+ (x, n))
+  | EvalSequence: forall v c1 v1 c2 v2, 
+    eval v c1 v1 
+    -> eval v1 c2 v2 
+    -> eval v (Sequence c1 c2) v2
+  | EvalIfTrue : forall v e then_ else_ v' n,
+    values e v n 
+    -> n <> 0
+    -> eval v then_ v'
+    -> eval v (If e then_ else_) v'
+  | EvalIfFalse : forall v e then_ else_ v' n,
+    values e v n 
+    -> n = 0
+    -> eval v else_ v'
+    -> eval v (If e then_ else_) v'
+  | EvalWhileTrue : forall v e body v' v'' n,
+    values e v n 
+    -> n <> 0
+    -> eval v body v'
+    -> eval v' (While e body) v''
+    -> eval v (While e body) v''
+  | EvalWhileFalse : forall v e body n,
+    values e v n 
+    -> n = 0
+    -> eval v (While e body) v
   .
 
   (* Hint: Many of the proofs below will depend on definitions we ask you to
@@ -274,22 +321,35 @@ Module Impl.
   Lemma read_last_value: forall x v c n,
       values (Var x) (v $+ (x, c)) n -> n = c.
   Proof.
-  Admitted.
+    simplify. invert H; simplify. 
+    - invert H1; trivial.
+    - exfalso; discriminate H1. 
+  Qed.
 
   (* Hint: This next theorem is a bit boring -- it's about 30 lines of "invert",
      "simplify", "discriminate", "equality", "linear_arithmetic" and
      "apply read_last_value in H", "subst" in our solution.
-
      But it's a good test case to make sure you got the definition of "eval"
      right! And note that inverting the hypotheses in the right order, i.e. in
      the order the program is executed, as well as using "read_last_value"
      whenever possible, will make your proof less long.
-
      (Or, you could use automation — our automated proof is 8 lines long.) *)
   Theorem the_answer_is_indeed_42:
     forall v, eval $0 the_answer_is_42 v -> v $? "answer" = Some 42.
   Proof.
-  Admitted.
+    simplify. 
+    invert H; 
+    invert H3;
+    invert H5;
+    invert H2;
+    invert H6;
+    invert H9;
+    try (invert H11; simplify; trivial);
+    try (invert H7; trivial). 
+    exfalso. invert H6. apply read_last_value in H1. apply read_last_value in H2. apply read_last_value in H3. apply read_last_value in H5. linear_arithmetic.
+    invert H10. simplify. invert H7; trivial. 
+    exfalso. invert H6. apply read_last_value in H3. discriminate H3.
+  Qed. 
 
   (* Here's another example program. If we run it on a valuation that is
      undefined for "x", it will read the undefined variable "x" to decide
@@ -305,7 +365,21 @@ Module Impl.
   Proof.
     unfold loop_of_unknown_length.
     induct n; simplify.
-  Admitted.
+    - replace ($0 $+ ("counter", initialCounter + 0)) with ($0 $+ ("counter", initialCounter)); cycle 1. 
+        { maps_equal; apply f_equal; linear_arithmetic. }
+      eapply EvalWhileFalse with (n := 0). eapply ValuesVarUndefined; simplify; trivial. trivial.
+    - eapply EvalWhileTrue with (n := S n) (v := ($0 $+ ("counter", initialCounter))).
+        + eapply ValuesVarUndefined; simplify; trivial.
+        + linear_arithmetic.
+        + eapply EvalAssign with (n := initialCounter + 1). eapply ValuesPlus with (a1 := initialCounter) (a2 := 1).
+            * eapply ValuesVarDefined. simplify. trivial.
+            * eapply ValuesConst. trivial.
+            * trivial.
+        + replace ($0 $+ ("counter", initialCounter) $+ ("counter", initialCounter + 1)) with ($0 $+ ("counter", initialCounter + 1)); cycle 1. { maps_equal. }
+        specialize (IHn (initialCounter + 1)).
+        replace ($0 $+ ("counter", initialCounter + S n)) with ($0 $+ ("counter", initialCounter + 1 + n)). trivial.
+        maps_equal. f_equal. linear_arithmetic.
+  Qed.
 
   (* Wherever this TODO_FILL_IN is used, you should replace it with your own code. *)
   Axiom TODO_FILL_IN: Prop.
@@ -340,7 +414,20 @@ Module Impl.
         (exists r, interp e v1 r /\ r <> 0 /\ run fuel' v1 c1 v2) \/
         (interp e v1 0 /\ run fuel' v1 c2 v2)
       | While e c1 =>
+        (exists r, interp e v1 r /\ r <> 0 /\ run fuel' )
         TODO_FILL_IN
+
+(* | EvalWhileTrue : forall v e body v' v'' n,
+    values e v n 
+    -> n <> 0
+    -> eval v body v'
+    -> eval v' (While e body) v''
+    -> eval v (While e body) v''
+  | EvalWhileFalse : forall v e body n,
+    values e v n 
+    -> n = 0
+    -> eval v (While e body) v
+     *)
       end
     end.
 
