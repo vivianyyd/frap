@@ -127,31 +127,24 @@ Inductive val_well_typed : stack_val -> ty -> Prop :=
       val_well_typed (val_cons v1 v2) (ty_list t).
 Local Hint Constructors val_well_typed : core.
 
-(*
-  Since a stack is a list of values, we can use this judgment to define
+(* Since a stack is a list of values, we can use this judgment to define
   a typing judgment for stacks as well. The type of a stack is just a list
   of the types of its values. Since `val_well_typed` is a binary relation,
   we can use `Forall2` from the standard library to lift it to operate on stacks.
-  You can see the definition of `Forall2` by printing it:
- *)
+  You can see the definition of `Forall2` by printing it: *)
 Print Forall2.
 
-(*
-  We define `stack_well_typed` as a notation instead of a definition for some
+(* We define `stack_well_typed` as a notation instead of a definition for some
   convenience in tactics. You don't need to pay attention to the difference
   except to know that you can't unfold `stack_well_typed`, but Rocq automatically
-  will see it as a use of `Forall2`.
- *)
+  will see it as a use of `Forall2`. *)
 Notation stack_well_typed := (Forall2 val_well_typed).
 Local Hint Constructors Forall2 : core.
-
 
 (* Here are some definitions that we will use in the interpreter.
    Many of them have dummy cases that we do not expect to hit.
    Specifically, the benefit of all of the typing judgments is that
-   they guarantee these cases will never happen. 
- *)
-
+   they guarantee these cases will never happen. *)
 Definition stack_unop f (s : list stack_val) :=
   match s with
   | a::s' => (f a)::s'
@@ -163,8 +156,6 @@ Definition stack_binop f (s : list stack_val) :=
   | a::b::s' => (f a b)::s'
   | _ => (*this case never happens on well-typed programs*) s
   end.
-
-
 
 Definition stack_pop (s : list stack_val) :=
   match s with
@@ -201,19 +192,35 @@ Fixpoint val_reduce (f : stack_val -> stack_val -> stack_val) vl vacc :=
   | val_lit _ => val_lit 0
   end.
 
-
 (*
   You will have to prove some lemmas about most of these functions to finish
   the later exercises. We've given you one of the more complicated ones here
   to prove, but you should come up with your own for the other functions as
   needed.
  *)
+
+Lemma app_well_typed v1 v2 t
+  : val_well_typed v1 (ty_list t) ->
+    val_well_typed v2 (ty_list t) ->
+    val_well_typed (val_app v1 v2) (ty_list t).
+Proof.
+  simplify. induct v1; simpl.
+  - invert H. 
+  - trivial.
+  - invert H. eauto. 
+Qed.
+
 Lemma val_flatmap_sound t1 t2 f l
   : (forall x, val_well_typed x t1 -> val_well_typed (f x) (ty_list t2)) ->
     val_well_typed l (ty_list t1) ->
     val_well_typed (val_flatmap f l) (ty_list t2).
 Proof.
-Admitted.
+    simplify.
+    induct l; simpl.
+    - invert H0.
+    - auto.
+    - cases l1; invert H0; apply app_well_typed; eauto.
+Qed.
 
 (*
   Now that we have values, we can define our syntax of commands.
@@ -225,9 +232,9 @@ Admitted.
               and push the result back
   - cmd_swap: switch 2 values in the stack, determined by their positions.
               `n1` must always be the earlier (smaller) position.
-  - cmd_flatmap: the most interesting operation in this assignment. It pops a
-                 list value from the stack, runs a command `cf` on each element of
-                 the list, and appends the outputs of that command in order.
+  - cmd_flatmap: pops a list value from the stack, runs a command `cf` on 
+                 each element of the list, and appends the outputs of that 
+                 command in order.
   - cmd_reduce: pops a list value and another value from the stack and accumulates
                 an output value by starting with the second value and running
                 a command `cf` on the current accumulator and each item in the list
@@ -249,16 +256,12 @@ Inductive stack_cmd :=
 | cmd_reduce (cf : stack_cmd) (c : stack_cmd)
 | cmd_skip.
 
-
-
-(*
-  This is the typing judgment for commands. You should read `cmd_well_typed S c S'`
+(* This is the typing judgment for commands. You should read `cmd_well_typed S c S'`
   as "On an input stack of type S, running c must produce an output stack of type S'".
 
   Notice that in the flatmap and reduce cases, `cf` only works with fixed input and
   output stacks. This means that it's not allowed to affect the rest of the stack,
-  for example by swapping with some earlier value.
- *)
+  for example by swapping with some earlier value. *)
 Inductive cmd_well_typed : list ty -> stack_cmd -> list ty -> Prop :=
 | cmd_atom_wt v t S c S'
   : val_well_typed v t ->
@@ -291,7 +294,6 @@ Inductive cmd_well_typed : list ty -> stack_cmd -> list ty -> Prop :=
   : cmd_well_typed S (cmd_skip) S.
 Local Hint Constructors cmd_well_typed : core.
 
-
 (*
   This is our interpreter, which defines the behavior of our programs.
   Since all programs in this language terminate, we can define it as a
@@ -316,55 +318,111 @@ Fixpoint interp_cmd (c : stack_cmd) (s : list stack_val) : list stack_val :=
   | cmd_skip => s
   end.
 
-
-
-
-
-
-
-
-
-(*
-  Now let's prove that our interpreter satisfies our typing judgment.
+(* Now let's prove that our interpreter satisfies our typing judgment.
   In other words, that running a well-typed command on a well-typed
   input stack produces a well-typed output stack.
-
   HINT: If you aren't sure what to do in the `cmd_reduce` case,
   look at `val_flatmap_sound` for inspiration.
-  If you're really stuck, read HINT 1 in Pset6Sig.v.
- *)
+  If you're really stuck, read HINT 1 in Pset6Sig.v.  *)
+
+Lemma val_reduce_sound t1 t2 f l
+  : (forall x acc', val_well_typed x t1 ->
+                    val_well_typed acc' t2 ->
+                    val_well_typed (f acc' x) t2) ->
+    val_well_typed l (ty_list t1) ->
+    forall acc,
+    val_well_typed acc t2 ->
+    val_well_typed (val_reduce f l acc) t2.
+Proof. 
+    simplify. 
+    induct l; simplify; invert H0; eauto.
+Qed.
+    
+Lemma Forall2_swap :
+  forall P n1 n2 (xs: list stack_val) (ys: list ty),
+    Forall2 P xs ys ->
+    Forall2 P (swap n1 n2 xs) (swap n1 n2 ys).
+Proof. 
+    simplify.
+    induct H; simplify; eauto.
+Qed.
+
 Lemma interp_sound S c S'
   : cmd_well_typed S c S' ->
     forall s, stack_well_typed s S ->
               stack_well_typed (interp_cmd c s) S'.
 Proof.
-Admitted.
-  
+    intros H; induction H; simplify;
+    (* induct 1; simplify;  *)
+    try apply IHcmd_well_typed; simplify.
+    - info_eauto.
+    - cases s; invert H1. 
+        + simplify. specialize (H s). info_eauto.
+    - cases s; invert H1. 
+        + cases s0; invert H7.
+            * simplify. specialize (H s s0). info_eauto.
+    - apply Forall2_swap with (P := val_well_typed). exact H2.
+    - cases s; simplify.
+        + invert H1. 
+        + apply IHcmd_well_typed1. 
+          invert H1. 
+          econstructor.
+          2: { assumption. }
+          apply val_flatmap_sound with (t1 := t1). 
+          2: { assumption. }
+          simplify. 
+          assert (stack_well_typed [x] [t1]) by (constructor; [assumption|constructor]).
+          pose proof (IHcmd_well_typed2 [x] H2) as Hinterp.
+          unfold stack_peek.
+          cases (interp_cmd cf [x]); invert Hinterp.
+            * exact H8.
+    - invert H1; simplify. 
+      cases l; invert H6.
+      unfold stack_pop.
+      apply IHcmd_well_typed1.
+      econstructor; try trivial.
+        + apply val_reduce_sound with (t1 := t); simplify; try trivial.
+            * unfold stack_peek. 
+            assert (stack_well_typed [x0; acc'] [t; t_acc]) as Hstack by eauto.
+            pose proof (IHcmd_well_typed2 [x0; acc'] Hstack) as Hinterp.
+            cases (interp_cmd cf [x0; acc']). invert Hinterp.
+            invert Hinterp. exact H9.
+    - trivial.
+Qed.
 
-(*
-  Sometimes it's useful to combine two sequences of commands.
+(* Sometimes it's useful to combine two sequences of commands.
   Define a function `cmd_seq` so that the output is the
   concatenation of its inputs and you can prove the two following
-  lemmas.
- *)
-Fixpoint cmd_seq (c1 c2 : stack_cmd) : stack_cmd.
-Admitted.
-
+  lemmas. *)
+Fixpoint cmd_seq (c1 c2 : stack_cmd) : stack_cmd :=
+  match c1 with
+  | cmd_atom v c'      => cmd_atom v (cmd_seq c' c2)
+  | cmd_unop f c'      => cmd_unop f (cmd_seq c' c2)
+  | cmd_binop f c'     => cmd_binop f (cmd_seq c' c2)
+  | cmd_swap n1 n2 c'  => cmd_swap n1 n2 (cmd_seq c' c2)
+  | cmd_flatmap cf c'  => cmd_flatmap cf (cmd_seq c' c2)
+  | cmd_reduce cf c'   => cmd_reduce cf (cmd_seq c' c2)
+  | cmd_skip           => c2
+  end.
 
 Lemma cmd_seq_wt S1 S2 S3 c1 c2
   : cmd_well_typed S1 c1 S2 ->
     cmd_well_typed S2 c2 S3 ->
     cmd_well_typed S1 (cmd_seq c1 c2) S3.
 Proof.
-Admitted.
+    simplify. induct H; simplify; eauto.
+Qed. 
 
 Lemma interp_seq c1 c2 s
   : interp_cmd (cmd_seq c1 c2) s
     = interp_cmd c2 (interp_cmd c1 s).
 Proof.
-Admitted.
-
-
+    induct c1; simplify; eauto.
+    induct s; simplify; unfold stack_pop; auto. 
+    - destruct (stack_pop s) as [l s0] eqn:Hpop; simplify.
+      destruct (stack_pop s0) as [acc s1] eqn:Hpop2; simplify.
+      apply IHc1_2.
+Qed.
 
 (*
   Let's take a look at ways to optimize programs in our language.
@@ -405,7 +463,6 @@ Fixpoint partial_eval c :=
   | cmd_reduce cf c' => cmd_reduce (partial_eval cf) (partial_eval c')
   | cmd_skip => cmd_skip
   end.
-
 
 (* Some common commands for use in our test cases *)
 Definition val_add x y :=
@@ -484,10 +541,8 @@ Proof.
   all: invert IHcmd_well_typed; eauto.
 Qed.
 
-
-
 (* 
-  Now that we've warmed up, let's get to the meat of this assigment,
+  Now that we've warmed up, let's get to the meat vof this assigment,
   proving compiler correctness. Since we've defined the semantics of
   our language with an interpreter, we want to show that, given an
   arbitrary (well-typed) stack, interpreting the output of our compiler
@@ -503,15 +558,142 @@ Qed.
 
   If you're having trouble with showing that your stack has enough elements
   (e.g. in the binop case), read HINT 2 in Pset6Sig.v.
-
   If you're having trouble with the function argument to val_flatmap,
   read HINT 3 in Pset6Sig.v.
 
  *)
+
+Lemma flatmap_funext_typed f g l t1
+  : (forall v, val_well_typed v t1 -> f v = g v) ->
+    val_well_typed l (ty_list t1) ->
+    val_flatmap f l = val_flatmap g l.
+Proof. 
+    simplify. induct H0. 
+    - auto. 
+    - simplify. 
+      pose proof (H _ H0_). rewrite H0.
+      apply f_equal.
+      pose proof (IHval_well_typed2 _ H).
+      apply H1. trivial.
+Qed. 
+
 Lemma partial_eval_correct S c S'
   : cmd_well_typed S c S' ->
     forall s, stack_well_typed s S -> interp_cmd (partial_eval c) s = interp_cmd c s.
 Proof.
+simplify. induct H; simplify.
+- cases (partial_eval c); eauto.
+    + simplify. apply IHcmd_well_typed with (s := v::s). auto.
+    + simplify. 
+      pose proof (partial_eval_sound _ _ _ H0). 
+      rewrite Heq in H2.
+      assert (stack_well_typed (v::s) (t::S)) by (constructor; auto).
+      pose proof (IHcmd_well_typed (v::s) H3).
+      rewrite <- H4.
+      apply f_equal. destruct s. 
+        * invert H2. invert H1. 
+        * auto.
+- cases (partial_eval c); 
+    try (apply IHcmd_well_typed; 
+    invert H1; 
+    unfold stack_unop; 
+    auto).
+    + invert H1. 
+      simplify. 
+      apply IHcmd_well_typed with (s := (f x :: l)).
+      auto.
+    + simplify.
+      pose proof (partial_eval_sound _ _ _ H0). rewrite Heq in H2.
+      invert H1; subst; simplify.
+      invert H2; subst; simplify.
+      invert H7; subst; simplify.  
+      specialize (IHcmd_well_typed ((f x)::x0::l0)).
+      rewrite <- IHcmd_well_typed.
+      simplify; reflexivity.
+      auto.
+- cases (partial_eval c); 
+    try (apply IHcmd_well_typed; 
+    invert H1; 
+    invert H6;
+    unfold stack_binop;
+    auto).
+    + simplify. 
+      pose proof (partial_eval_sound _ _ _ H0). rewrite Heq in H2. 
+      invert H1; invert H2; invert H7; subst; simplify.
+      specialize (IHcmd_well_typed ((f x x0 :: l0))).
+      rewrite <- IHcmd_well_typed.
+      simplify; reflexivity.
+      auto.
+- apply IHcmd_well_typed. auto.
+- destruct (stack_pop s) as [l s1] eqn:Hpop. 
+
+  assert ((val_flatmap (fun x : stack_val => stack_peek (interp_cmd (partial_eval cf) [x])) l) = (val_flatmap(fun x : stack_val => stack_peek (interp_cmd cf [x])) l)).
+    apply flatmap_funext_typed with (t1:=t1) (l:= l).
+    simplify. 
+    apply f_equal. 
+    apply IHcmd_well_typed2. 
+    auto.
+  invert H1. simpl in Hpop. invert Hpop. trivial.
+
+  rewrite H2.
+  
+  invert H1. 
+  apply IHcmd_well_typed1. 
+  pose proof (val_flatmap_sound t1 t2 (fun x0 : stack_val => stack_peek (interp_cmd cf [x0])) l).
+
+
+(* 
+    
+constructor.
+eapply val_flatmap_sound; eauto.
+  simplify.
+  assert (stack_well_typed [x0] [t1]) by (constructor; [exact H3|constructor]).
+  pose proof (interp_sound _ _ _ H_cf _ Hstack) as Hinterp.
+  unfold stack_peek.
+  simpl in Hinterp.   (* gives Forall2 info about (interp_cmd cf [x]) *)
+  destruct (interp_cmd cf [x]) as [|y ys]; simpl in Hinterp; inversion Hinterp; auto.
+- assumption. *)
+
+
+
+  assert (forall x : stack_val, val_well_typed x t1 -> val_well_typed ((fun x0 : stack_val => stack_peek (interp_cmd cf [x0])) x) (ty_list t2)).
+    simplify.
+
+    assert (stack_well_typed [x0] [t1]) as Hstack by (constructor; [assumption|constructor]).
+    pose proof (interp_sound _ _ _ H0 [x0] Hstack) as Hinterp.
+    destruct (interp_cmd cf [x0]) as [|y ys] eqn:Hrun; [inversion Hinterp|].
+    inversion Hinterp; subst; simpl.
+    trivial. 
+  
+  Check val_flatmap_sound.
+  simplify.
+  
+  
+
+assert (stack_well_typed [x] [t1]) as Hstack by (constructor; [assumption | constructor]).
+
+
+    invert H1. 
+
+    (* Bad: Check val_flatmap_sound.
+apply IHcmd_well_typed1.
+  pose proof (partial_eval_sound _ _ _ H0).
+  specialize (IHcmd_well_typed2 [x]).
+apply IHcmd_well_typed. auto.
+- apply IHcmd_well_typed. auto. *)
+
+
+(* destruct (stack_pop s) as [l s0] eqn:Hpop;  *)
+(* Whenever a branch gives you, say, cmd_unop f c'', you’ll want partial_eval_sound to re-establish that branch is well-typed, so the induction hypothesis for c'' can apply. After those steps each remaining equality is just another instance of the IH (sometimes with a bit more simplification) *)
+
+(* The behavior of a number of our operations depends on the input stack containing enough values.
+For example, `stack_unop` expects at least 1 value, and `stack_binop` expects at least 2 values
+on the stack. The way we guarantee these requirements are met is using our typing judgments.
+
+When we are working in a context where we assume everything is well-typed,
+the default functional extensionality isn't sufficient since it forgets about the type information.
+You'll need a specialized lemma that keeps it around.
+*)
 Admitted.
 
 
