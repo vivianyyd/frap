@@ -560,7 +560,6 @@ Qed.
   (e.g. in the binop case), read HINT 2 in Pset6Sig.v.
   If you're having trouble with the function argument to val_flatmap,
   read HINT 3 in Pset6Sig.v.
-
  *)
 
 Lemma flatmap_funext_typed f g l t1
@@ -729,16 +728,36 @@ Proof.
   rewrite Heq, IHl2; reflexivity.
 Qed.
 
-Lemma val_flatmap_assoc f g l :
-  val_flatmap g (val_flatmap f l) =
-  val_flatmap (fun x => val_flatmap g (f x)) l.
-Proof. Admitted.
+Lemma peek_flatmap cf s :
+  stack_peek (interp_cmd (cmd_flatmap cf cmd_skip) s) =
+    val_flatmap (fun y => stack_peek (interp_cmd cf [y]))
+                (stack_peek s).
+Proof.
+  destruct s as [|a s']; simpl; reflexivity.
+Qed.
 
-Lemma flatmap_peek cf2 x :
-  stack_peek (interp_cmd (cmd_flatmap cf2 cmd_skip) x) =
-    val_flatmap (fun y => stack_peek (interp_cmd cf2 [y]))
-                (stack_peek x).
-Proof. Admitted.
+Lemma val_app_assoc v1 v2 v3 :
+  val_app v1 (val_app v2 v3) = val_app (val_app v1 v2) v3.
+Proof.
+  induction v1; simpl; auto.
+  rewrite IHv1_2; reflexivity.
+Qed.
+
+Lemma val_flatmap_app g l1 l2 :
+  val_flatmap g (val_app l1 l2) =
+  val_app (val_flatmap g l1) (val_flatmap g l2).
+Proof. 
+    induct l1; auto.
+    simplify. rewrite IHl1_2. apply val_app_assoc.
+Qed.
+
+Lemma val_flatmap_assoc F1 F2 l :
+  val_flatmap F2 (val_flatmap F1 l)
+  = val_flatmap (fun x => val_flatmap F2 (F1 x)) l.
+Proof.
+    induct l; simplify; auto.
+    rewrite val_flatmap_app, IHl2. trivial.
+Qed.
 
 Lemma flatmap_fuse : forall cf1 cf2 c s,
     interp_cmd (cmd_flatmap cf1 (cmd_flatmap cf2 c)) s
@@ -747,29 +766,29 @@ Proof.
     simplify.
     destruct (stack_pop s) as [l s1] eqn:Hpop. 
     apply f_equal.
-    simplify.
-    set (f := fun x => stack_peek (interp_cmd cf2 [x])).
-    set (g := fun x => stack_peek (interp_cmd (cmd_seq cf1 (cmd_flatmap cf2 cmd_skip)) [x])).
-    pose proof (interp_seq cf1 (cmd_flatmap cf2 cmd_skip)).
-    assert (forall x, f x = g x).
-    { intro x. unfold f, g. rewrite (H [x]); simplify. 
-    destruct (stack_pop (interp_cmd cf1 [x])) as [l0 s0]. 
-    simplify.
-    admit.
-     }
-
-
-
-
-    Check interp_seq.
-
-
-
+    apply (f_equal (fun x => x :: s1)).
     
+    set (f := fun x =>
+        stack_peek (interp_cmd (cmd_seq cf1 (cmd_flatmap cf2 cmd_skip)) [x])).
+    set (g := fun x =>
+        stack_peek (interp_cmd (cmd_flatmap cf2 cmd_skip) (interp_cmd cf1 [x]))).
+    assert (Hfg : forall x, f x = g x).
+    { intro x. unfold f, g. rewrite interp_seq. reflexivity. }
+    rewrite (flatmap_funext f g l Hfg).
 
+    assert (Hg : forall x,
+        g x =
+        val_flatmap (fun y => stack_peek (interp_cmd cf2 [y]))
+            (stack_peek (interp_cmd cf1 [x]))).
+    { intro x. subst g. apply peek_flatmap. }
 
-Admitted.
+    rewrite (flatmap_funext g (fun x =>
+        val_flatmap (fun y => stack_peek (interp_cmd cf2 [y]))
+                    (stack_peek (interp_cmd cf1 [x])))
+        l Hg).
 
+    apply val_flatmap_assoc.
+Qed. 
 
 (*
   Now, define an optimization pass that does this transformation on an
@@ -783,8 +802,24 @@ Admitted.
 
   If you're having trouble with the tests, read HINT 5 in Pset6Sig.v.
  *)
-Fixpoint loop_fuse (c : stack_cmd) : stack_cmd.
-Admitted.
+Fixpoint loop_fuse (c : stack_cmd) : stack_cmd :=
+  match c with
+  | cmd_atom v c' => cmd_atom v (loop_fuse c')
+  | cmd_unop f c' => cmd_unop f (loop_fuse c')
+  | cmd_binop f c' => cmd_binop f (loop_fuse c')
+  | cmd_swap n1 n2 c' => cmd_swap n1 n2 (loop_fuse c')
+  | cmd_flatmap cf c' =>
+      let cf_fused := loop_fuse cf in
+      match loop_fuse c' with
+      | cmd_flatmap cf2 c'' =>
+          cmd_flatmap (cmd_seq cf_fused (cmd_flatmap cf2 cmd_skip)) c''
+      | c'_fused => cmd_flatmap cf_fused c'_fused
+      end
+  | cmd_reduce cf c' => cmd_reduce (loop_fuse cf) (loop_fuse c')
+  | cmd_skip => cmd_skip
+  end.
+
+
 
 (*
   Your loop_fuse optimizer should pass all of the following tests.
@@ -802,7 +837,7 @@ Lemma loop_fuse_test1
                             (cmd_flatmap (cmd_lit 1 (cmd_add (cmd_singleton cmd_skip)))
                                cmd_skip))))
          cmd_skip).
-Proof. (* equality. *) Admitted.
+Proof. equality. Qed.
 
 Lemma loop_fuse_test2
   : loop_fuse (cmd_flatmap (cmd_flatmap (cmd_unop val_square (cmd_singleton cmd_skip))
@@ -817,8 +852,7 @@ Lemma loop_fuse_test2
                      cmd_skip)))
             (cmd_singleton cmd_skip))
          cmd_skip.
-Proof. (* equality. *) Admitted.
-
+Proof. equality. Qed.
 
 Lemma loop_fuse_test3
   : loop_fuse (cmd_flatmap (cmd_unop val_square (cmd_singleton cmd_skip))
@@ -837,8 +871,7 @@ Lemma loop_fuse_test3
                              cmd_skip))))
                  cmd_skip)))
         cmd_skip.
-Proof. (* equality. *) Admitted.
-
+Proof. equality. Qed.
 
 (* As a first step, let's prove that this optimization preserves
    our typing judgment like before. The proof will be very similar
@@ -848,8 +881,12 @@ Lemma loop_fuse_sound S c S'
   : cmd_well_typed S c S' ->
     cmd_well_typed S (loop_fuse c) S'.
 Proof.
+  induct 1; simplify; eauto.
+  cases (loop_fuse c); simplify; eauto.
+  rewrite <- Heq in IHcmd_well_typed1.
+  (* Where is `op_fuse`?? It is not in the textbook nor the 
+     homework repo. *)
 Admitted.
-
 
 (*
   Now for the largest proof of the pset, let's prove that `loop_fuse` is correct.
