@@ -577,6 +577,28 @@ Proof.
       apply H1. trivial.
 Qed. 
 
+Lemma reduce_funext_typed f g l t1 t_acc
+  : (forall v acc, 
+    val_well_typed v t1 -> 
+    val_well_typed acc t_acc ->
+    f acc v = g acc v) ->
+    (forall v acc,
+        val_well_typed v t1 ->
+        val_well_typed acc t_acc ->
+        val_well_typed (f acc v) t_acc) ->
+    val_well_typed l (ty_list t1) ->
+    forall acc, 
+    val_well_typed acc t_acc ->
+    val_reduce f l acc = val_reduce g l acc.
+Proof. 
+    simplify. induct H1.
+    - auto.
+    - simplify. 
+    pose proof (H _ _ H1_ H2). rewrite H1.
+    apply IHval_well_typed2 with (t1 := t1); simplify; auto. 
+    rewrite <- H1. auto.
+Qed.
+
 Lemma partial_eval_correct S c S'
   : cmd_well_typed S c S' ->
     forall s, stack_well_typed s S -> interp_cmd (partial_eval c) s = interp_cmd c s.
@@ -626,79 +648,68 @@ simplify. induct H; simplify.
       auto.
 - apply IHcmd_well_typed. auto.
 - destruct (stack_pop s) as [l s1] eqn:Hpop. 
+  invert H1. simpl in Hpop. invert Hpop.
 
   assert ((val_flatmap (fun x : stack_val => stack_peek (interp_cmd (partial_eval cf) [x])) l) = (val_flatmap(fun x : stack_val => stack_peek (interp_cmd cf [x])) l)).
     apply flatmap_funext_typed with (t1:=t1) (l:= l).
     simplify. 
     apply f_equal. 
     apply IHcmd_well_typed2. 
-    auto.
-  invert H1. simpl in Hpop. invert Hpop. trivial.
+    auto. trivial.
 
-  rewrite H2.
-  
-  invert H1. 
+  rewrite H1.
   apply IHcmd_well_typed1. 
-  pose proof (val_flatmap_sound t1 t2 (fun x0 : stack_val => stack_peek (interp_cmd cf [x0])) l).
+  econstructor; auto.
 
+  apply val_flatmap_sound with (t1:=t1).
+  simplify. 
+    unfold stack_peek.
+ 
+    assert (Hstack : stack_well_typed [x] [t1]) by (constructor; [exact H2 | constructor]).
+    pose proof (interp_sound _ _ _ H0 [x] Hstack) as Hinterp.
 
-(* 
-    
-constructor.
-eapply val_flatmap_sound; eauto.
-  simplify.
-  assert (stack_well_typed [x0] [t1]) by (constructor; [exact H3|constructor]).
-  pose proof (interp_sound _ _ _ H_cf _ Hstack) as Hinterp.
-  unfold stack_peek.
-  simpl in Hinterp.   (* gives Forall2 info about (interp_cmd cf [x]) *)
-  destruct (interp_cmd cf [x]) as [|y ys]; simpl in Hinterp; inversion Hinterp; auto.
-- assumption. *)
+    destruct (interp_cmd cf [x]) as [|y ys] eqn:Hrun; [inversion Hinterp|].
+    inversion Hinterp; subst; auto.
+    trivial.
+- destruct (stack_pop s) as [l s0] eqn:Hpop. 
+  destruct (stack_pop s0) as [acc s1] eqn:Hpop2. 
+  invert H1. invert H6. 
+  simpl in Hpop; invert Hpop. 
+  simpl in Hpop2; invert Hpop2.
 
+  assert ((val_reduce (fun acc0 x : stack_val => stack_peek (interp_cmd (partial_eval cf) [x; acc0])) l acc) = (val_reduce (fun acc0 x : stack_val => stack_peek (interp_cmd cf [x; acc0])) l acc)).
+    { apply reduce_funext_typed with (t1:=t) (t_acc := t_acc); simplify.
+      apply f_equal. 
+      apply IHcmd_well_typed2. 
+      auto.
+      auto.
+      assert (stack_well_typed [v; acc0] [t; t_acc]).   
+        econstructor; trivial; auto.
+      pose proof (IHcmd_well_typed2 [v; acc0] H3).
+      rewrite H6. 
+      pose proof (interp_sound _ _ _ H0 [v; acc0] H3).
+      invert H8. auto.
+      trivial. trivial. }
+  rewrite H1. 
+  apply IHcmd_well_typed1.
+  econstructor; auto.
+    Check val_reduce_sound.
+  apply val_reduce_sound with (t1:=t).
+  simplify. 
+    unfold stack_peek.
+ 
+    assert (Hstack : stack_well_typed [x; acc'] [t; t_acc]) by (eauto).
+    pose proof (interp_sound _ _ _ H0 [x; acc'] Hstack) as Hinterp.
 
+    cases (interp_cmd cf [x; acc']).
+    inversion Hinterp; auto.
+    invert Hinterp; auto.
+    trivial.
+    trivial.
+- trivial.
+Qed.
 
-  assert (forall x : stack_val, val_well_typed x t1 -> val_well_typed ((fun x0 : stack_val => stack_peek (interp_cmd cf [x0])) x) (ty_list t2)).
-    simplify.
-
-    assert (stack_well_typed [x0] [t1]) as Hstack by (constructor; [assumption|constructor]).
-    pose proof (interp_sound _ _ _ H0 [x0] Hstack) as Hinterp.
-    destruct (interp_cmd cf [x0]) as [|y ys] eqn:Hrun; [inversion Hinterp|].
-    inversion Hinterp; subst; simpl.
-    trivial. 
-  
-  Check val_flatmap_sound.
-  simplify.
-  
-  
-
-assert (stack_well_typed [x] [t1]) as Hstack by (constructor; [assumption | constructor]).
-
-
-    invert H1. 
-
-    (* Bad: Check val_flatmap_sound.
-apply IHcmd_well_typed1.
-  pose proof (partial_eval_sound _ _ _ H0).
-  specialize (IHcmd_well_typed2 [x]).
-apply IHcmd_well_typed. auto.
-- apply IHcmd_well_typed. auto. *)
-
-
-(* destruct (stack_pop s) as [l s0] eqn:Hpop;  *)
-(* Whenever a branch gives you, say, cmd_unop f c'', you’ll want partial_eval_sound to re-establish that branch is well-typed, so the induction hypothesis for c'' can apply. After those steps each remaining equality is just another instance of the IH (sometimes with a bit more simplification) *)
-
-(* The behavior of a number of our operations depends on the input stack containing enough values.
-For example, `stack_unop` expects at least 1 value, and `stack_binop` expects at least 2 values
-on the stack. The way we guarantee these requirements are met is using our typing judgments.
-
-When we are working in a context where we assume everything is well-typed,
-the default functional extensionality isn't sufficient since it forgets about the type information.
-You'll need a specialized lemma that keeps it around.
-*)
-Admitted.
-
-
-(*
-  Let's try another compiler optimization. It turns out that when we have
+(* Let's try another compiler optimization. It turns out that when we have
   two flatmap commands in a row, we can reorder them so that the second
   one operates on each output of the first as it's produced. In other
   words, instead of generating a whole intermediate list, we can compute
@@ -706,15 +717,57 @@ Admitted.
   is from a family of optimizations called list fusion.
 
   The following lemma formalizes this idea.
-
-  
   If you're having trouble with the function argument to val_flatmap,
   read HINT 4 in Pset6Sig.v.
  *)
+
+Lemma flatmap_funext f g l :
+  (forall v, f v = g v) ->
+  val_flatmap f l = val_flatmap g l.
+Proof.
+  intros Heq; induction l; simpl; auto.
+  rewrite Heq, IHl2; reflexivity.
+Qed.
+
+Lemma val_flatmap_assoc f g l :
+  val_flatmap g (val_flatmap f l) =
+  val_flatmap (fun x => val_flatmap g (f x)) l.
+Proof. Admitted.
+
+Lemma flatmap_peek cf2 x :
+  stack_peek (interp_cmd (cmd_flatmap cf2 cmd_skip) x) =
+    val_flatmap (fun y => stack_peek (interp_cmd cf2 [y]))
+                (stack_peek x).
+Proof. Admitted.
+
 Lemma flatmap_fuse : forall cf1 cf2 c s,
     interp_cmd (cmd_flatmap cf1 (cmd_flatmap cf2 c)) s
     = interp_cmd (cmd_flatmap (cmd_seq cf1 (cmd_flatmap cf2 cmd_skip)) c) s.
 Proof.
+    simplify.
+    destruct (stack_pop s) as [l s1] eqn:Hpop. 
+    apply f_equal.
+    simplify.
+    set (f := fun x => stack_peek (interp_cmd cf2 [x])).
+    set (g := fun x => stack_peek (interp_cmd (cmd_seq cf1 (cmd_flatmap cf2 cmd_skip)) [x])).
+    pose proof (interp_seq cf1 (cmd_flatmap cf2 cmd_skip)).
+    assert (forall x, f x = g x).
+    { intro x. unfold f, g. rewrite (H [x]); simplify. 
+    destruct (stack_pop (interp_cmd cf1 [x])) as [l0 s0]. 
+    simplify.
+    admit.
+     }
+
+
+
+
+    Check interp_seq.
+
+
+
+    
+
+
 Admitted.
 
 
