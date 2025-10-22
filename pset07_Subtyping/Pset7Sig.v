@@ -30,7 +30,7 @@ Module Type S.
     | TupleCons e2' e2'' => TupleCons (subst e1 x e2') (subst e1 x e2'')
     | Proj e2' n => Proj (subst e1 x e2') n
     end.
-
+    value
   Inductive context :=
   | Hole
   | App1 (C : context) (e2 : exp)
