@@ -289,6 +289,7 @@ Can you formulate a lemma to recover information similar to what inverting
       (forall e' n, e = Proj e' n ->
          exists t', has_ty G e' t' /\ proj_t t' n (Fun t1' t2')).
 
+This seems really ugly so I'm not sure if it's what the question is actually asking for
 *)
 
 (* Prove these two basic algebraic properties of subtyping. *)
@@ -300,7 +301,6 @@ Proof.
   - apply StTupleNilNil.
   - apply StTupleCons; assumption.
 Qed.
-
 
 (* BEGIN handy tactic that we suggest for these proofs *)
 Ltac tac0 :=
@@ -529,11 +529,106 @@ has_ty (G $+ (x, t')) e t
 Proof. induct 1; tac; eauto. Qed.
 Local Hint Resolve substitution : core.
 
+Ltac get_exists :=
+  lazymatch goal with
+  | [ hypname : exists _ _, _ |- _ ] => destruct hypname as [? [? hypname]]; try propositional
+  end.  
 
 Lemma has_ty_TupleCons G e e' t:
    has_ty G (TupleCons e e') t ->
    exists t1 t2, has_ty G e t1 /\ has_ty G e' t2 /\ TupleTypeCons t1 t2 $<: t.
-Proof. Admitted.
+Proof. 
+simplify.
+induct H. 
+- assert (has_ty G (TupleCons e e') (TupleTypeCons t1 t2)) by (apply HtTupleCons; trivial).
+  exists t1, t2.
+  propositional.
+  apply subtype_refl.
+- get_exists. 
+  exists x, x0. 
+  propositional. 
+  apply subtype_trans with (t2 := t');
+  trivial.
+Qed.
+
+Lemma has_ty_Abs G x e t :
+  has_ty G (Abs x e) t ->
+  exists t1 t2,
+    has_ty (G $+ (x, t1)) e t2 /\
+    Fun t1 t2 $<: t.
+Proof. 
+simplify.
+induct H.
+- assert (has_ty G (Abs x e) (Fun t1 t2)) by (apply HtAbs; trivial).
+  exists t1, t2.
+  propositional.
+  apply subtype_refl.
+- get_exists.
+  exists x0, x1. 
+  propositional.
+  apply subtype_trans with (t2 := t');
+  trivial.
+Qed.
+
+Lemma has_ty_App G e1 e2 t :
+  has_ty G (App e1 e2) t ->
+  exists t1 t2,
+    has_ty G e1 (Fun t1 t2) /\
+    has_ty G e2 t1 /\
+    t2 $<: t.
+Proof. 
+simplify.
+induct H. 
+- exists t1, t2.
+  propositional.
+  apply subtype_refl.
+- get_exists.
+  exists x, x0.
+  propositional.
+  apply subtype_trans with (t2 := t'); 
+  trivial.
+Qed.
+
+Lemma has_ty_Proj G e n t :
+  has_ty G (Proj e n) t ->
+  exists t' t0,
+    has_ty G e t' /\
+    proj_t t' n t0 /\
+    t0 $<: t.
+Proof.
+simplify.
+induct H. 
+- exists t', t.
+  propositional.
+  apply subtype_refl.
+- get_exists.
+  exists x, x0.
+  propositional.
+  apply subtype_trans with (t2 := t'); trivial.
+Qed.
+
+Ltac deduce_tys1 :=
+  match goal with
+  | [ H : has_ty _ (App _ _) _ |- _ ] => pose proof has_ty_App H; clear H
+  | [ H : has_ty _ (Abs _ _) _ |- _ ] => pose proof has_ty_Abs H; clear H
+  | [ H : has_ty _ (Proj _ _) _ |- _ ] => pose proof has_ty_Proj H; clear H
+  | [ H : has_ty _ (TupleCons _ _) _ |- _ ] => pose proof has_ty_TupleCons H; clear H
+  end;
+get_exists.
+
+Ltac deduce_tys := repeat deduce_tys1.
+
+Ltac has_ty_trans :=
+    repeat match goal with
+    | [ H1 : has_ty ?G ?e ?t0,
+        H2 : ?t0 $<: ?t1,
+        H3 : ?t1 $<: ?t2 
+        |- has_ty ?G ?e ?t2 ] => apply HtSub with (t' := t1); auto
+    | [ H1 : has_ty ?G ?e ?t0,
+        H2 : ?t0 $<: ?t1
+        |- has_ty ?G ?e ?t1 ] => apply HtSub with (t' := t0); auto
+    end.
+Hint Extern 1 => has_ty_trans : core.
 
 Lemma preservation0 : forall e1 e2,
 step0 e1 e2
@@ -541,31 +636,18 @@ step0 e1 e2
     -> has_ty $0 e2 t.
 Proof.
 invert 1; tac.
-(* - eapply substitution.
-    + invert H.
-        * invert H4. {eapply H2. } *)
-(*
-Preservation proof runs by inversion on the primitive step and relies on the inversion lemmas for typing plus substitution and subtyping facts.
-
-Beta: From has_ty $0 (App (Abs x e) v) t, use the App inversion lemma (parallel to has_ty_TupleCons in Pset7.v:...) to get t1, t2, typings of the operands, and Fun t1 t2 $<: t. The Abs inversion lemma yields has_ty ($0 $+ (x, t1)) e t2; substitution gives has_ty $0 (subst v x e) t2, and the saved subtyping derivation lifts the result to t.
-
-Proj0: Projection inversion on has_ty $0 (Proj (TupleCons v1 v2) 0) t produces a witness TupleTypeCons t1 t2 $<: t; the tuple inversion lemma recovers typings for v1 and v2, and reflexivity of subtyping delivers has_ty $0 v1 t.
-
-ProjS: Projection inversion plus has_ty_TupleCons again expose types for the tuple components and the residual projection. Reassemble the typing derivation for Proj v2 n, then apply the collected subtyping proof to reach t.
-
-Each branch therefore constructs has_ty $0 e2 t, completing preservation for step0.
-*)
-invert H.
-    + invert H4; apply substitution with (t' := t1); auto.
-    
-        * apply substitution .
- (* apply substitution with (t' := t1). *)
-    + invert H. 
-        * invert H4. { eapply H2. }
-info_eauto 6.
+- deduce_tys.
+  invert H4.
+  apply substitution with (t' := x2);
+  auto.
+- deduce_tys.
+  tac.
+  auto.
+- deduce_tys.
+  tac.
+  apply HtSub with (t' := x0); auto.
+  apply HtProj with (t' := t2); auto.
 Qed.
-(* 
-
 Local Hint Resolve preservation0 : core.
 
 Lemma preservation' : forall C e1 e1',
@@ -575,46 +657,47 @@ Lemma preservation' : forall C e1 e1',
     -> has_ty $0 e1' t
     -> has_ty $0 e2' t.
 Proof.
-induct 1; t.
+induct 1; tac.
+- apply preservation0 with (e1 := e); auto.
+- deduce_tys.
+  apply HtApp with (t1 := x); auto.
+  + apply IHplug with (e2 := e0); auto.
+    apply HtSub with (t' := (Fun x x0)); auto.
+    apply StFun; auto; apply subtype_refl.
+- deduce_tys.
+  apply HtSub with (t' := x0); auto.
+  + apply HtApp with (t1 := x); auto.
+    apply IHplug with (e2 := e2); auto.
+- deduce_tys.
+  invert H4.
+  + apply HtSub with (t' := TupleTypeCons x x0); auto.
+    apply HtTupleCons; auto.
+    apply IHplug with (e2 := e0); auto.
+  + apply HtTupleCons; auto.
+    apply IHplug with (e2 := e0); auto.
+- deduce_tys.
+  invert H5.
+  + apply HtSub with (t' := TupleTypeCons x x0); auto.
+    apply HtTupleCons; auto.
+    apply IHplug with (e2 := e2); auto.
+  + apply HtTupleCons; auto.
+    apply IHplug with (e2 := e2); auto.
+- deduce_tys.
+  apply HtSub with (t' := x0); auto.
+  apply HtProj with (t' := x); auto.
+  apply IHplug with (e2 := e2); auto.
 Qed.
 Local Hint Resolve preservation' : core.
 
+Lemma preservation : forall e1 e2,
+step e1 e2
+-> forall t, has_ty $0 e1 t
+    -> has_ty $0 e2 t.
+Proof.
+invert 1; tac; eauto.
+Qed.
 
-    HINT 3: Helper lemmas for preservation: Typing inversion
-In the proof of preservation for `step0`, you will have `has_ty` hypotheses for for expressions with known constructors, e.g. for an `(Abs x e)` or for a `(TupleCons e1 e2)` etc.
-Without subtyping, inverting such a `has_ty` would give you just one subgoal, where the `has_ty` is replaced by the preconditions that were used to construct it.
-Now, with subtyping, you get one additional subgoal for the `HtSub` case, where the original `has_ty` is replaced by a similar looking `has_ty` and a subtyping derivation. You could invert that new `has_ty` again, and again and again, and your proving endeavor would never end.
-This hint shows how to solve this problem for `TupleCons`, but you will have to apply this trick for all constructors of `exp`.
-Without subtyping, we would know that if `TupleCons e1 e2` has a type t, then there are some types t1 and t2 such that e1 has type t1, e2 has type t2, and `t = TupleTypeCons t1 t2`. This fact would follow directly from the fact that there is only a single rule for typing a TupleCons expression.
-However, once we add subtyping, the HtSub rule allows us to type an expression of any form, and so the above property doesn't hold. A typing derivation for the fact that `TupleCons e1 e2` has type t can be arbitrarily long even when e1 and e2 are small, but we still know that it must start from an application of the HtTupleCons rule, followed by potentially many applications of the HtSub rule. Since we have proven that the subtype relation is reflexive and transitive, we know the many applications of the HtSub rule can be replaced with exactly one, meaning we know that there is a derivation for TupleCons e1 e2 that is an HtSub rule applied to the HtTupleCons rule. This tells us the following fact:
-Lemma has_ty_TupleCons G e e' t:
-   has_ty G (TupleCons e e') t ->
-   exists t1 t2, has_ty G e t1 /\ has_ty G e' t2 /\ TupleTypeCons t1 t2 $<: t.
-Knowing this fact is useful for the type-safety proof, because now whenever we know that `TupleCons e e'` has some type, we can directly get information about the types of its subexpressions. If we only tried to invert the original typing derivation, the last rule in the derivation may have been HtSub, in which case we would make no "progress" down towards finding the application of the rule HtTupleCons.
-You should be able to formulate and prove similar lemmas for Abs, App, and Proj.
-
-
-   *)
-  Lemma preservation : forall e1 e2,
-    step e1 e2
-    -> forall t, has_ty $0 e1 t
-      -> has_ty $0 e2 t.
-  Proof.
-    admit.
-    (* invert 1; t. *)
-  Admitted.
-
-  Local Hint Resolve progress preservation : core.
-
-(* Theorem safety : forall e t, has_ty $0 e t
-    -> invariantFor (trsys_of e)
-                    (fun e' => value e'
-                               \/ exists e'', step e' e'').
-  Proof.
-    simplify.
-    apply invariant_weaken with (invariant1 := fun e' => has_ty $0 e' t); eauto.
-    apply invariant_induction; simplify; eauto; equality.
-  Qed. *)
+Local Hint Resolve progress preservation : core.
 
 Theorem safety : forall e t, has_ty $0 e t
   -> invariantFor (trsys_of e)
