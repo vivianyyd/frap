@@ -122,7 +122,7 @@ Inductive eval : valuation -> cmd -> valuation -> Prop :=
 | EvalWhileFalse : forall v e body,
     interp e v = 0
     -> eval v (While e body) v.
-(* Local Hint Constructors eval : core. *)
+Local Hint Constructors eval : core.
 
 (*|
 Typing judgment
@@ -398,6 +398,127 @@ Proof.
     equality.
 Qed.
 
+Lemma weakening : 
+  forall pub c cv cupped,
+  Confidential pub (cv \cup cupped) c ->
+  Confidential pub cv c.
+Proof. 
+    induct c; simplify; trivial.
+    - invert H. 
+        + apply ConfidentialAssignPrivate; trivial.
+        + apply ConfidentialAssignPublic; trivial; sets.
+    - replace ({ } \cup (cv \cup cupped)) with ((cv \cup cupped)) in H by sets.
+      invert H.
+      apply ConfidentialSeq.
+      apply (IHc1 _ _ H3).
+      apply (IHc2 _ _ H4).
+    - invert H.
+      apply ConfidentialIf;
+      replace (({ } \cup (cv \cup cupped)) \cup vars e) with ((cv \cup vars e) \cup cupped) in H3, H5 by sets.
+      apply (IHc1 _ _ H3).
+      apply (IHc2 _ _ H5).
+    - invert H.
+      apply ConfidentialWhile.
+      replace (({ } \cup (cv \cup cupped)) \cup vars e) with ((cv \cup vars e) \cup cupped) in H2 by sets.
+      apply (IHc _ _ H2).
+Qed.
+      
+Lemma private_pc_preserves_public :
+  forall pub cv c v v',
+    eval v c v' ->
+    Confidential pub cv c ->
+    (exists x, x \in cv /\ ~ x \in pub) ->
+    same_public_state pub v v'.
+Proof. 
+simplify. 
+unfold same_public_state. 
+induct H.
+- trivial.
+- invert H0.
+  + maps_equal.
+    excluded_middle (k \in pub).
+      * rewrite !(lookup_restrict_true pub); trivial.
+        cases (k ==v x).
+        exfalso; sets.
+        rewrite lookup_add_ne; trivial.
+      * rewrite !(lookup_restrict_false pub _ k); trivial.
+  + exfalso.
+    destruct H1 as [x1 Hx].
+    sets.
+- invert H1.
+  pose proof (IHeval1 H6 H2).
+  pose proof (IHeval2 H7 H2).
+  equality.
+- invert H1. 
+  pose proof (weakening _ _ cv _ H6).
+  apply (IHeval H1 H2).
+- invert H1. 
+  pose proof (weakening _ _ cv _ H8).
+  apply (IHeval H1 H2).
+- pose proof H2.
+  invert H2.
+  pose proof (weakening _ _ cv _ H7).
+  pose proof (IHeval1 H2 H3).
+  pose proof (IHeval2 H4 H3).
+  equality.
+- trivial.
+Qed.
+
+Lemma branches_agree_public :
+  forall pub cv c1 c2 v1' v2' v1 v2,
+    same_public_state pub v1' v2' ->
+    (exists x : var, x \in cv /\ ~ x \in pub) ->
+    eval v1' c1 v1 ->
+    eval v2' c2 v2 ->
+    Confidential pub cv c1 ->
+    Confidential pub cv c2 ->
+    same_public_state pub v1 v2.
+Proof.
+  simplify.
+  pose proof (private_pc_preserves_public _ _ _ _ _ H1 H3 H0).
+  pose proof (private_pc_preserves_public _ _ _ _ _ H2 H4 H0).
+  unfold same_public_state.
+  unfold same_public_state in H5, H6.
+  rewrite <- H5, <- H6.
+  trivial.
+Qed.
+
+Lemma not_subset_ex {A} :
+  forall (s t : set A),
+    ~ s \subseteq t ->
+    exists x, x \in s /\ ~ x \in t.
+Proof.
+  unfold subseteq; intros s t Hsub.
+  excluded_middle (exists x, x \in s /\ ~ x \in t).
+  - exact H.
+  - exfalso; apply Hsub; intro x; intro Hxs.
+    excluded_middle (x \in t); auto.
+    exfalso; apply H; exists x; auto.
+Qed.
+
+Lemma priv_var_in_guard :
+  forall e pub cv v1 v2,
+    same_public_state pub v1 v2 ->
+    interp e v1 <> interp e v2 ->
+    (exists x, x \in (cv \cup vars e) /\ ~ x \in pub).
+Proof.
+    simplify.
+    assert (exists x, x \in vars e /\ ~ x \in pub).
+    { 
+        pose proof (public_expr_equal _ e _ _ H).
+        assert (~ (vars e \subseteq pub)) by
+        (contradict H; propositional). 
+        apply not_subset_ex.
+        exact H2.
+    }
+    assert (exists x, x \in { } \cup (cv \cup vars e) /\ ~ x \in pub).
+    {
+        destruct H1 as [x [Hx Hpriv]].
+        exists x; split; sets.
+    }
+    exact H2.
+Qed.
+
 Lemma non_interference_cvs :
   forall pub c cv v1 v1' v2 v2',
     eval v1 c v1' ->
@@ -439,8 +560,15 @@ induct c; simplify.
       invert H0;
       invert H1.
         + pose proof (IHc1 _ _ _ _ _ H12 H13 H7 H2); trivial.
+        + assert (~ (interp e v1 ) = (interp e v2)) by linear_arithmetic.
+          pose proof (priv_var_in_guard _ _ cv _ _ H2 H).
+          pose proof (branches_agree_public _ _ _ _ _ _ _ _ H2 H0 H12 H13 H7 H9).
+          exact H1.
+        + assert (~ (interp e v1 ) = (interp e v2)) by linear_arithmetic.
+          pose proof (priv_var_in_guard _ _ cv _ _ H2 H).
+          pose proof (branches_agree_public _ _ _ _ _ _ _ _ H2 H0 H12 H13 H9 H7).
+          exact H1.
         + admit. 
-        
         
 Admitted.
 
