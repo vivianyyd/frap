@@ -122,6 +122,7 @@ Inductive eval : valuation -> cmd -> valuation -> Prop :=
 | EvalWhileFalse : forall v e body,
     interp e v = 0
     -> eval v (While e body) v.
+(* Local Hint Constructors eval : core. *)
 
 (*|
 Typing judgment
@@ -198,7 +199,7 @@ Inductive Confidential (pub: set var) : set var (* cv *) -> cmd (* program *) ->
     Confidential pub cv (While e body).
 (** A while loop is safe if its body is safe,
     noting that the body runs with additional variables in the `cv`. **)
-
+Local Hint Constructors Confidential : core.
 (*|
 Here are a few examples:
 |*)
@@ -260,14 +261,18 @@ Definition same_public_state pub (v1 v2: valuation) :=
  Suppose an expression contains only public variables. Under what valuations 
  do we expect them to evaluate to the same value?
 
-
+ All valuations with the same public state
 
  Suppose an expression evaluates to different values under different
  valuations. What do we know about this expression if the different valuations
  share the same public state? Do we know anything if the valuations do not 
  share the same public state?
 
-
+ That means the expression leaks information from private variables. 
+ This is still the case if the public states are different, but the variables in the
+ diff are not mentioned in the expression.
+ However, if the expressions literally have different public variables, we don't 
+ really learn anything about the private variables
 
  The noninterference property says that running a program in states with 
  private variables holding potentially different values does not change the 
@@ -278,26 +283,167 @@ Definition same_public_state pub (v1 v2: valuation) :=
 
  When does this happen?  How does that translate in terms of the variables
  in `cv`?
-  
+ 
+ This happens when we do a branch as in when or while. It matters because if
+ we're in a branch conditioned on a private variable, we can't assign to public
+ stuff or else information about this private control variable will leak. 
+
  Can a divergent execution affect the values of public variables?
 
-
+ Yes, as I just mentioned and as is shown in the example leaky_prog. 
 
  When a Confidential program executes, in what ways can it modify the 
  valuation? How does this depend on the values of `cv`?
 
+ It can modify private variables freely. It can only assign to public variables if 
+ the current branch is only dependent on public variables. 
 
  Finally, can the value of a private variable (one not in `pub`) determine
  whether a confidential program terminates? Assign the definition below to
  `true` if so, and `false` if not.
 
+ From the intro: 
+We'll prove that changing the private inputs of
+a well-typed program does not change its public outputs. We'll say that well-typed
+programs are “confidential”.
+Note that this formulation doesn't rule out side channels: changing the private inputs
+of a program might change its runtime or even whether it terminates.
+
+See the below test. 
  *)
 
-Definition private_can_determine_termination : bool.
-Admitted.
+Definition private_can_determine_termination : bool := true.
+
+Example test :=
+ ("a" <- 1;; while "a" loop Skip done).
+
+Goal Confidential pub_example {} test.
+Proof.
+ unfold test, pub_example.
+ apply ConfidentialSeq; simplify.
+ - apply ConfidentialAssignPublic; simplify; sets.
+ - apply ConfidentialWhile; simplify.
+   + apply ConfidentialSkip; simplify.
+Qed.
 
 
 (* HINT 1-2 (see Pset8Sig.v) *) 
+
+Lemma restrict_with_pub :
+  forall pub (v1 v2: valuation) x e,
+    restrict pub v1 = restrict pub v2 ->
+    x \in pub ->
+    restrict pub (v1 $+ (x, e)) = restrict pub (v2 $+ (x, e)).
+Proof. 
+    simplify. 
+    maps_equal.
+    cases (k ==v x).
+    - rewrite e0.
+      rewrite !lookup_restrict_true by assumption.
+      rewrite !lookup_add_eq; trivial.
+    - excluded_middle (k \in pub).
+        + rewrite !lookup_restrict_true by assumption.
+          rewrite !lookup_add_ne by assumption.
+          rewrite <- (lookup_restrict_true pub v1 k) by assumption.
+          rewrite <- (lookup_restrict_true pub v2 k) by assumption.
+          rewrite H.
+          equality.
+        + rewrite !lookup_restrict_false by assumption.
+          equality.
+Qed.
+
+Lemma restrict_not_pub :
+  forall pub (v1 v2 : valuation) x e e',
+    restrict pub v1 = restrict pub v2 ->
+    ~ pub x ->
+    restrict pub (v1 $+ (x, e)) = restrict pub (v2 $+ (x, e')).
+Proof.
+  simplify.
+  maps_equal.
+  cases (k ==v x); simplify; try equality.
+  excluded_middle (k \in pub).
+  - rewrite !lookup_restrict_true by assumption.
+    rewrite !lookup_add_ne by assumption.
+    rewrite <- (lookup_restrict_true pub v1 k) by assumption.
+    rewrite <- (lookup_restrict_true pub v2 k) by assumption.
+    rewrite H.
+    equality.
+  - rewrite !lookup_restrict_false by assumption.
+    equality.
+Qed.
+
+(* If an expression uses only some set of variables, it evaluates to the same value under any valuations that have the same assignments to that set.  *)
+Lemma public_expr_equal :
+  forall pub e v1 v2,
+    same_public_state pub v1 v2 ->
+    vars e \subseteq pub ->
+    interp e v1 = interp e v2.
+Proof.
+    induct e; simplify; trivial.
+
+    unfold same_public_state in H.
+    assert (x \in pub) by sets.
+    assert (v1 $? x = v2 $? x).
+    rewrite <- (lookup_restrict_true pub v1 x) by assumption.
+    rewrite <- (lookup_restrict_true pub v2 x) by assumption.
+    rewrite H; trivial.
+    destruct (v1 $? x); rewrite <- H2; trivial.
+
+    assert ((vars e1) \subseteq pub) by sets.
+    assert ((vars e2) \subseteq pub) by sets.
+    pose proof (IHe1 _ _ H H1).
+    pose proof (IHe2 _ _ H H2).
+    rewrite H3.
+    rewrite H4. 
+    equality.
+Qed.
+
+Lemma non_interference_cvs :
+  forall pub c cv v1 v1' v2 v2',
+    eval v1 c v1' ->
+    eval v2 c v2' ->
+    Confidential pub cv c ->
+    same_public_state pub v1 v2 ->
+    same_public_state pub v1' v2'.
+Proof. 
+induct c; simplify.
+    - invert H.
+      invert H0.
+      trivial.
+    - invert H. 
+      invert H0.
+      invert H1. 
+        + unfold same_public_state in H2.
+          unfold same_public_state. 
+          apply restrict_not_pub;
+          trivial.
+        + unfold same_public_state.
+          excluded_middle (x \in pub).
+            * assert (interp e v1 = interp e v2) by 
+              (apply public_expr_equal with (pub := pub); 
+              trivial).
+              rewrite H0.
+              apply restrict_with_pub;
+              trivial.
+            * apply restrict_not_pub; trivial. 
+    - invert H. 
+      invert H0.
+      invert H1.
+      pose proof (IHc1 _ _ _ _ _ H6 H5 H4 H2).
+      pose proof (IHc2 _ _ _ _ _ H8 H9 H7 H).
+      trivial.
+    - pose proof H. 
+      pose proof H0.
+      pose proof H1.
+      invert H;
+      invert H0;
+      invert H1.
+        + pose proof (IHc1 _ _ _ _ _ H12 H13 H7 H2); trivial.
+        + admit. 
+        
+        
+Admitted.
+
 Theorem non_interference :
   forall pub c v1 v1' v2 v2',
     eval v1 c v1' ->
@@ -306,7 +452,9 @@ Theorem non_interference :
     same_public_state pub v1 v2 ->
     same_public_state pub v1' v2'.
 Proof.
-Admitted.
+    simplify. 
+    apply (non_interference_cvs _ _ _ _ _ _ _ H H0 H1 H2).
+Qed.
 
 (*|
 Congratulations, you have proved that our type system is *sound*: it catches all leaky programs!
@@ -317,11 +465,15 @@ Can you give an example of a safe program (a program that does not leak data) th
 would reject?
 |*)
 
-Definition tricky_example : cmd. Admitted.
+Definition tricky_example : cmd :=
+(when "a" then "x" <- 1;; "x" <- 0 else "x" <- 0 done).
 
 Lemma tricky_rejected : ~ Confidential pub_example {} tricky_example.
 Proof.
-Admitted.
+    unfold tricky_example, pub_example, not; simplify.
+    invert H. invert H3. invert H5. sets.
+    unfold vars in H6. assert ("a" \in {"x", "y", "z"}) by sets. sets.
+Qed.
 
 Lemma tricky_confidential :
   forall v1 v1' v2 v2',
@@ -330,7 +482,37 @@ Lemma tricky_confidential :
     same_public_state pub_example v1 v2 ->
     same_public_state pub_example v1' v2'.
 Proof.
-Admitted.
+    unfold tricky_example, pub_example; simplify.
+    invert H; invert H0.
+    - invert H8. invert H9. invert H3. invert H4.
+      invert H5. 
+      invert H10. trivial.
+      unfold same_public_state.
+      assert (interp 1 v1 = interp 1 v2) by trivial.
+      rewrite !H.
+      apply restrict_with_pub; sets.
+      apply restrict_with_pub; sets.
+    - invert H8. invert H9. invert H3. invert H5.
+      unfold same_public_state.
+      assert (interp 0 (v1 $+ ("x", interp 1 v1)) = 0) by trivial.
+      assert (interp 0 v2 = 0) by trivial.
+      rewrite H. 
+      rewrite H0.
+      assert ((v1 $+ ("x", interp 1 v1) $+ ("x", 0)) = (v1 $+ ("x", 0))) by sets.
+      rewrite H2.
+      trivial.
+      apply restrict_with_pub; trivial; sets.
+    - invert H8. invert H9. invert H3. invert H5.
+      unfold same_public_state.
+      assert ((v2 $+ ("x", interp 1 v2) $+ ("x", interp 0 (v2 $+ ("x", interp 1 v2)))) = (v2 $+ ("x", 0))) by sets; trivial.
+      rewrite H. 
+      replace (interp 0 v1) with 0 by trivial.
+      apply restrict_with_pub; trivial; sets.
+    - invert H9. invert H8.
+      replace (interp 0 v1) with 0 by trivial.
+      replace (interp 0 v2) with 0 by trivial.
+      apply restrict_with_pub; trivial; sets.
+Qed.
 End Impl.
 
 Module ImplCorrect : Pset8Sig.S := Impl.
