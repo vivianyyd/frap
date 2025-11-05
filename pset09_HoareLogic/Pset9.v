@@ -484,7 +484,18 @@ Theorem max3_ok:
   max3
   <{ fun/inv tr' _ _ => max3_spec tr' }>.
 Proof.
-Admitted.
+    unfold max3_spec.
+    ht;
+    exists x8, x5, x2.
+    - replace (Init.Nat.max x8 (Init.Nat.max x5 x2)) with x2 by linear_arithmetic.
+      auto.
+    - replace (Init.Nat.max x8 (Init.Nat.max x5 x2)) with x5 by linear_arithmetic.
+      auto.
+    - replace (Init.Nat.max x8 (Init.Nat.max x5 x2)) with x2 by linear_arithmetic.
+      auto.
+    - replace (Init.Nat.max x8 (Init.Nat.max x5 x2)) with x8 by linear_arithmetic.
+      auto.
+Qed.
 
 (*|
 Euclidean Algorithm for GCD
@@ -516,13 +527,19 @@ Example euclidean_algorithm a b inv :=
    output "a")%cmd.
 
 Definition euclidean_algorithm_invariant (a b : nat) : assertion :=
-   fun/inv _ _ _ => True.
+   fun/inv tr _ v => 
+   exists a_orig b_orig : nat,
+      v $! "a_orig" = a_orig /\
+      v $! "b_orig" = b_orig /\
+      Nat.gcd a b = Nat.gcd a_orig b_orig /\
+      Nat.gcd (v $! "a") (v $! "b") = Nat.gcd a_orig b_orig /\
+      tr = [].
 
 Local Hint Unfold euclidean_algorithm_invariant : core.
 
 
 
-(* HINT 1 (see Pset9Sig.v) *) 
+(* HINT 1 (see Pset9Sig.v) *)
 Theorem euclidean_algorithm_ok : forall a b,
     <{ fun/inv tr h v =>
          0 < a /\ 0 < b /\
@@ -532,8 +549,26 @@ Theorem euclidean_algorithm_ok : forall a b,
          v $! "a" = v $! "b"
          /\ exists d, tr = [Out d] /\ Nat.gcd a b = d }>.
 Proof.
-Admitted.
-
+    ht.
+    - exists (x $! "a_orig"), (x $! "b_orig").
+      propositional; simplify.
+      rewrite <- H5.
+      apply Nat.gcd_sub_diag_r.
+      linear_arithmetic.
+    - exists (x $! "a_orig"), (x $! "b_orig").
+      propositional; simplify.
+      rewrite Nat.gcd_comm.
+      rewrite Nat.gcd_comm in H5.
+      rewrite <- H5.
+      apply Nat.gcd_sub_diag_r.
+      linear_arithmetic.
+    - exists (v $! "a").
+      propositional.
+      rewrite H3.
+      rewrite <- H4.
+      rewrite <- e.
+      apply Nat.gcd_diag.
+Qed.
 
 (*|
 Streaming Fibonacci sequence
@@ -574,7 +609,10 @@ Here's the definition of the loop invariant that you will have to modify to comp
 
 (* HINT 2 (see Pset9Sig.v) *) 
 Definition fibonacci_invariant (n: nat) : assertion :=
-   fun/inv _ _ _ => True.
+   fun/inv tr _ v => 
+    fibonacci_spec tr /\
+    exists tr_old,
+      tr = Out (v $! "y") :: Out (v $! "x") :: tr_old.
 
 Local Hint Unfold fibonacci_invariant : core.
 Local Hint Constructors fibonacci_spec : core.
@@ -584,7 +622,8 @@ Theorem fibonacci_ok (n: nat):
   fibonacci n (fibonacci_invariant n)
   <{ fun/inv tr' _ _ => fibonacci_spec tr' }>.
 Proof.
-Admitted.
+  ht. 
+Qed.
 
 (*|
 Streaming factorial
@@ -616,7 +655,12 @@ Inductive fact_spec : nat -> trace -> Prop :=
     fact_spec (S n) (Out (x * S n) :: Out x :: tr).
 
 Definition fact_invariant (n: nat) : assertion :=
-   fun/inv _ _ _ => True.
+   fun/inv tr _ v =>
+    fact_spec (v $! "cnt") tr /\
+    exists tr_old,
+      tr = Out (v $! "x") :: tr_old /\
+      v $! "n" = n /\
+      v $! "cnt" <= n.
 
 Local Hint Unfold fact_invariant : core.
 Local Hint Constructors fact_spec : core.
@@ -627,7 +671,12 @@ Theorem fact_ok (n: nat):
   fact (fact_invariant n)
   <{ fun/inv tr' _ _ => fact_spec n tr' }>.
 Proof.
-Admitted.
+    ht.
+    - exists []. propositional. linear_arithmetic.
+    - assert (v $! "cnt" = v $! "n") by linear_arithmetic.
+      rewrite H0 in H.
+      trivial.
+Qed.
 
 Fixpoint fact_rec (n: nat) :=
   match n with
@@ -721,7 +770,11 @@ As always, the key part of the proof is the choice of invariant.
 |*)
 
 Definition mailbox_invariant : assertion :=
-   fun/inv _ _ _ => True.
+   fun/inv tr h v =>
+    match v $! "done" with
+    | 0 => mailbox_spec h tr
+    | _ => exists tr0, tr = In 0 :: tr0 /\ mailbox_spec h tr0
+    end.
 
 Local Hint Unfold mailbox_invariant : core.
 Local Hint Constructors mailbox_spec mailbox_done : core.
@@ -732,7 +785,20 @@ Theorem mailbox_ok:
   mailbox mailbox_invariant
   <{ fun/inv tr' h' _ => mailbox_done h' tr' }>.
 Proof.
-Admitted.
+    ht.
+    - rewrite e in H.
+      exists x0.
+      propositional.
+    - rewrite e in H.
+      rewrite e.
+      apply MBPut; try linear_arithmetic; trivial.
+    - destruct (v $! "done").
+        + exfalso; linear_arithmetic.
+        + destruct H as [tr' [full spec]]. 
+          rewrite full. 
+          apply MBDone.
+          trivial.
+Qed.
 
 (*|
 Streaming search
@@ -842,13 +908,73 @@ You'll need to customize this invariant:
 |*)
 
 Definition search_invariant (ptr: nat) (data: list nat) : assertion :=
-   fun/inv _ _ _ => True.
+   fun/inv tr h v =>
+    v $! "ptr" = ptr /\
+    v $! "length" <= Datatypes.length data /\
+    array_at h ptr data /\
+    search_spec (v $! "needle") (v $! "length")
+                (List.skipn (v $! "length") data) tr.
 
 Local Hint Unfold search_invariant : core.
 Local Hint Constructors search_spec search_done : core.
 Arguments List.nth: simpl nomatch.
 
+Lemma skipn_sub_app:
+  forall (data : list nat) (n : nat),
+    0 < n <= Datatypes.length data ->
+    List.skipn (n - 1) data =
+    List.nth (n - 1) data 0 :: List.skipn n data.
+Proof.
+  induct data; simplify.
+  - linear_arithmetic.
+  - assert (n = 1 \/ n - 1 = S (n - 1 - 1)) as Heq by linear_arithmetic.
+    cases Heq; rewrite Heq.
+    + reflexivity.
+    + replace n with (S (n - 1)) at 3 by linear_arithmetic.
+      simplify; apply IHdata; linear_arithmetic.
+Qed.
 
+Lemma array_at_nth_eq :
+  forall data ptr (h: heap) n x,
+    array_at h ptr data ->
+    S n <= Datatypes.length data ->
+    h $! (ptr + n) = x ->
+    nth n data 0 = x.
+Proof.
+  intros data ptr h n x H.
+  revert n x. 
+  induction H.
+  - simplify. linear_arithmetic.
+  - simplify. 
+    destruct n; simplify.
+    + rewrite Nat.add_0_r in H2.
+      rewrite H in H2.
+      assumption.
+    + apply IHarray_at; try linear_arithmetic.
+      replace (S (ptr + n)) with (ptr + S n) by linear_arithmetic.
+      assumption.
+Qed.
+
+Lemma array_at_nth_neq :
+  forall data ptr (h: heap) n x,
+    array_at h ptr data ->
+    S n <= Datatypes.length data ->
+    h $! (ptr + n) <> x ->
+    nth n data 0 <> x.
+Proof.
+  intros data ptr h n x H.
+  revert n x. 
+  induction H.
+  - simplify. linear_arithmetic.
+  - simplify. 
+    destruct n; simplify.
+    + rewrite Nat.add_0_r in H2.
+      rewrite H in H2.
+      assumption.
+    + apply IHarray_at; try linear_arithmetic.
+      replace (S (ptr + n)) with (ptr + S n) by linear_arithmetic.
+      assumption.
+Qed.
 
 (* HINT 5 (see Pset9Sig.v) *) 
 Theorem search_ok ptr data:
@@ -862,7 +988,28 @@ Theorem search_ok ptr data:
        array_at h' ptr data /\
        search_done data tr' }>.
 Proof.
-Admitted.
+    ht.
+    - Check skipn_all.
+      assert ((skipn (x0 $! "length") data) = []).
+      rewrite H3.
+      apply skipn_all.
+      rewrite H.
+      apply SearchNil.
+    - assert ((skipn (x0 $! "length" - 1) data) = (List.nth (x0 $! "length" - 1) data 0 :: skipn (x0 $! "length") data)) by (apply skipn_sub_app; linear_arithmetic).
+      rewrite H. 
+      apply SearchConsYes. 
+        + linear_arithmetic.
+        + apply array_at_nth_eq with (h := h) (ptr := x0 $! "ptr"); trivial; try linear_arithmetic.
+        + trivial.
+    - assert ((skipn (x $! "length" - 1) data) = (List.nth (x $! "length" - 1) data 0 :: skipn (x $! "length") data)) by (apply skipn_sub_app; linear_arithmetic).
+      rewrite H. 
+      apply SearchConsNo.
+        + linear_arithmetic.
+        + apply array_at_nth_neq with (h := h) (ptr := x $! "ptr"); trivial; try linear_arithmetic.
+        + trivial.
+    - apply SearchDone with (needle := v $! "needle") (offset := v $! "length"); trivial.
+      replace (v $! "length") with 0 in H3 at 2; trivial.
+Qed.
 
 (*|
 Congratulations!  If you have extra time and you'd like to explore
