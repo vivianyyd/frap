@@ -553,22 +553,40 @@ induct c; simplify.
       pose proof (IHc1 _ _ _ _ _ H6 H5 H4 H2).
       pose proof (IHc2 _ _ _ _ _ H8 H9 H7 H).
       trivial.
-    - pose proof H. 
-      pose proof H0.
-      pose proof H1.
+    - pose proof H1.
       invert H;
       invert H0;
       invert H1.
-        + pose proof (IHc1 _ _ _ _ _ H12 H13 H7 H2); trivial.
+        + pose proof (IHc1 _ _ _ _ _ H10 H11 H5 H2); trivial.
         + assert (~ (interp e v1 ) = (interp e v2)) by linear_arithmetic.
           pose proof (priv_var_in_guard _ _ cv _ _ H2 H).
-          pose proof (branches_agree_public _ _ _ _ _ _ _ _ H2 H0 H12 H13 H7 H9).
+          pose proof (branches_agree_public _ _ _ _ _ _ _ _ H2 H0 H10 H11 H5 H7).
           exact H1.
         + assert (~ (interp e v1 ) = (interp e v2)) by linear_arithmetic.
           pose proof (priv_var_in_guard _ _ cv _ _ H2 H).
-          pose proof (branches_agree_public _ _ _ _ _ _ _ _ H2 H0 H12 H13 H9 H7).
+          pose proof (branches_agree_public _ _ _ _ _ _ _ _ H2 H0 H10 H11 H7 H5).
           exact H1.
-        + admit. 
+        + pose proof (IHc2 _ _ _ _ _ H10 H11 H7 H2); trivial.
+    - pose proof H as Heval1.
+      pose proof H0 as Heval2.
+      pose proof H1.
+      invert H1.
+      revert dependent v2;
+      revert dependent v2'.
+      induct Heval1.
+      + simplify.
+        rename v into v1.
+        rename v' into v1'.
+        rename v'' into v1''.
+        induct Heval2;
+        rename v into v2;
+        try rename v' into v2';
+        try rename v'' into v2''.
+        pose proof (IHc _ _ _ _ _ Heval1_1 Heval2_1 H6 H2).
+
+        apply IHHeval2_2 with (e:=e) (c:=c); trivial.
+        (* apply IHHeval1_2 with (e := e) (c := c); trivial. *)
+        admit.
         
 Admitted.
 
